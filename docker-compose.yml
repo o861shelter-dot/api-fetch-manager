@@ -1,0 +1,35 @@
+services:
+  api-fetch-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: api-fetch-manager:latest
+    container_name: api-fetch-manager
+    restart: unless-stopped
+    ports:
+      - "${API_FETCH_MANAGER_PORT:-8080}:8080"
+    environment:
+      # Mọi biến prefix API_FETCH_MANAGER_ (xem .env.example để biết ý nghĩa từng biến)
+      API_FETCH_MANAGER_PORT: 8080
+      API_FETCH_MANAGER_LOG_LEVEL: ${API_FETCH_MANAGER_LOG_LEVEL:-info}
+      API_FETCH_MANAGER_STORAGE_MODE: ${API_FETCH_MANAGER_STORAGE_MODE:-file}
+      API_FETCH_MANAGER_DATA_DIR: /data
+      API_FETCH_MANAGER_ENCRYPTION_KEY: ${API_FETCH_MANAGER_ENCRYPTION_KEY}
+      # --- Chỉ cần khi STORAGE_MODE=firebase ---
+      API_FETCH_MANAGER_FIREBASE_SA: ${API_FETCH_MANAGER_FIREBASE_SA:-}
+      API_FETCH_MANAGER_RTDB_KEYS_URL: ${API_FETCH_MANAGER_RTDB_KEYS_URL:-}
+      API_FETCH_MANAGER_RTDB_HISTORY_URL: ${API_FETCH_MANAGER_RTDB_HISTORY_URL:-}
+      API_FETCH_MANAGER_RTDB_LOGS_URL: ${API_FETCH_MANAGER_RTDB_LOGS_URL:-}
+      API_FETCH_MANAGER_RTDB_ISSUES_URL: ${API_FETCH_MANAGER_RTDB_ISSUES_URL:-}
+      API_FETCH_MANAGER_RTDB_VARIABLES_URL: ${API_FETCH_MANAGER_RTDB_VARIABLES_URL:-}
+    volumes:
+      # Giữ dữ liệu file-storage qua restart (bỏ nếu dùng firebase)
+      - afm-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  afm-data:

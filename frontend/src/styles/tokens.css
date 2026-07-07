@@ -1,0 +1,123 @@
+/* tokens.css — Design System ([UI] 1,2,4.8,5). Mọi màu qua CSS variable. */
+
+:root {
+  /* Typography — font mảnh */
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --fw-thin: 300;
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fs-base: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --fs-lg: 15px;
+  --fs-title: 18px;
+  --lh-base: 1.4;
+
+  /* Spacing scale — 4px base */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Elevation */
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.24);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+
+  /* Motion */
+  --motion-fast: 120ms ease;
+  --motion-base: 200ms ease;
+
+  /* Z-index */
+  --z-overlay: 1000;
+  --z-modal: 1010;
+  --z-tooltip: 1020;
+  --z-inspect: 1030;
+
+  /* Breakpoints (tham chiếu) */
+  --bp-sm: 480px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+}
+
+/* LIGHT THEME */
+:root,
+[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-subtle: #f5f6f8;
+  --bg-elevated: #ffffff;
+  --border: #e3e6ea;
+  --text: #1a1d21;
+  --text-muted: #6b7280;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --overlay: rgba(15, 23, 42, 0.45);
+}
+
+/* DARK THEME */
+[data-theme='dark'] {
+  --bg: #0f1115;
+  --bg-subtle: #161a20;
+  --bg-elevated: #1c2128;
+  --border: #2a2f37;
+  --text: #e6e8eb;
+  --text-muted: #9aa0a6;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --overlay: rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-weight: var(--fw-normal);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Scrollbar mảnh, đồng bộ theme ([UI] 4.8) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+a {
+  color: var(--primary);
+}

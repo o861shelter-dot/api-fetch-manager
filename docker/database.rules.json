@@ -1,0 +1,44 @@
+{
+  "_comment": "Realtime Database Rules mẫu cho API Fetch Manager. Mỗi DB độc lập dùng đúng phần rules tương ứng. Khai .indexOn theo [SYS] 3 & 10.4 để tối ưu truy vấn.",
+  "rtdb-keys": {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "credentials": {
+        "$ownerId": { ".indexOn": ["key", "service"] }
+      }
+    }
+  },
+  "rtdb-history": {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "history": {
+        "$ownerId": { ".indexOn": ["service", "calledAt", "success"] }
+      }
+    }
+  },
+  "rtdb-logs": {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "logs": { ".indexOn": ["service", "business", "level", "createdAt"] }
+    }
+  },
+  "rtdb-issues": {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "issues": { ".indexOn": ["type", "status", "createdAt"] }
+    }
+  },
+  "rtdb-variables": {
+    "rules": {
+      ".read": false,
+      ".write": false,
+      "variables": {
+        "$scope": { ".indexOn": ["updatedAt"] }
+      }
+    }
+  }
+}

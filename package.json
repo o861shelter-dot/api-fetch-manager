@@ -1,0 +1,21 @@
+{
+  "name": "api-fetch-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Centralized API key manager with fetch builder, flow executor, inspect mode and issue tracking.",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build": "npm --workspace frontend run build && npm --workspace backend run build",
+    "start": "npm --workspace backend run start",
+    "test": "npm --workspace backend run test",
+    "seed": "npm --workspace backend run seed"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
