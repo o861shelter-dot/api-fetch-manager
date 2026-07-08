@@ -182,4 +182,39 @@ describe('executeFlow — sequential 2-step', () => {
     const logStr = JSON.stringify(logs);
     expect(logStr).not.toContain('seed_token');
   });
+
+  it('HTTP lỗi có response excerpt; REDACT_EXECUTION_VALUES=false vẫn không log credential đã lưu', async () => {
+    const tpl: FetchTemplate = {
+      id: 'flow-debug',
+      name: 'debug fail',
+      service: 'github.com',
+      business: 'get-user',
+      stopOnError: true,
+      credentialRefs: [{ placeholder: 'org.token', key: 'org.token' }],
+      steps: [
+        {
+          id: 'me',
+          method: 'GET',
+          urlTemplate: 'https://api.github.com/user',
+          headers: { Authorization: 'Bearer {{org.token}}', 'X-Debug': 'Bearer visible_debug_value' },
+        },
+      ],
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    ctx.config.redactExecutionValues = false;
+    const fetchImpl = mockFetch({
+      'https://api.github.com/user': { status: 401, body: { message: 'Bad credentials', echo: 'Bearer visible_debug_value seed_token' } },
+    });
+
+    const res = await executeFlow(ctx, { ownerId, template: tpl }, fetchImpl);
+
+    expect(res.ok).toBe(false);
+    expect(res.steps[0].error).toContain('HTTP 401');
+    expect(res.steps[0].error).toContain('Bad credentials');
+    const logs = await store.listLogs(ctx, { level: 'error' });
+    const logStr = JSON.stringify(logs);
+    expect(logStr).toContain('visible_debug_value');
+    expect(logStr).not.toContain('seed_token');
+  });
 });

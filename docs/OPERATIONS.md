@@ -22,6 +22,7 @@ Tất cả biến prefix `API_FETCH_MANAGER_`. Xem `.env.example` để biết *
 | `API_FETCH_MANAGER_HTTP_TIMEOUT_MS` | không (15000) | Timeout outbound executor/Firebase REST |
 | `API_FETCH_MANAGER_HTTP_RETRIES` | không (2) | Retry lỗi mạng/timeout/429/5xx |
 | `API_FETCH_MANAGER_HTTP_MAX_RESPONSE_BYTES` | không (1 MiB) | Giới hạn response executor đọc vào memory |
+| `API_FETCH_MANAGER_REDACT_EXECUTION_VALUES` | không (true) | Che giá trị giống token trong history/log execute; credential đã lưu vẫn luôn bị che |
 
 App **fail-fast**: thiếu biến bắt buộc → dừng với message rõ ràng.
 
@@ -56,7 +57,7 @@ Dùng Google Realtime Database, **5 DB tách biệt**. Các bước:
 - Credential **luôn mã hóa** AES-256-GCM at-rest (`valueEnc` + `iv`). Không lưu plaintext.
 - API list trả **masked** (`ghp_****ANR1M`). Chỉ endpoint `/reveal` (sau confirm ở UI) trả plaintext. Khi cấu hình `API_FETCH_MANAGER_ADMIN_TOKEN`, mọi endpoint `/api` ngoài `/api/health` yêu cầu Bearer token; file/firebase mode bắt buộc có token này. Frontend gửi token từ `VITE_API_FETCH_MANAGER_ADMIN_TOKEN` khi build hoặc từ `localStorage['api-fetch-manager.adminToken']`.
 - Executor và Firebase REST có timeout/retry: mặc định timeout 15s, retry 2 lần cho lỗi mạng/timeout/429/5xx, và executor giới hạn response text 1 MiB.
-- Log **che token** (Bearer/token/ghp_/sbp_ → `***`). Không log secret.
+- Log mặc định **che token** (Bearer/token/ghp_/sbp_ → `***`). Đặt `API_FETCH_MANAGER_REDACT_EXECUTION_VALUES=false` chỉ để debug giá trị request/response không phải credential đã lưu; credential trong store vẫn luôn bị thay bằng `***`.
 - Advanced JS chạy trong **sandbox cô lập** (node:vm): cấm network/fs/process/require, timeout 200ms.
 - ⚠️ Secret mẫu trong tài liệu yêu cầu đã bị lộ → **rotate ngay**, chỉ dùng dữ liệu GIẢ cho seed/test.
 

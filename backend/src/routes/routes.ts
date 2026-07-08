@@ -216,6 +216,15 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
     return ok(result);
   });
 
+  app.post('/api/fetch/test-step', async (req, reply) => {
+    const b = req.body as { ownerId?: string; template?: any; stepIndex?: number; params?: Record<string, unknown> };
+    if (!b?.ownerId || !b?.template || !Array.isArray(b.template.steps)) return reply.code(400).send(err('ownerId & template.steps là bắt buộc'));
+    const stepIndex = Number.isInteger(b.stepIndex) ? Math.max(0, Math.min(b.stepIndex as number, b.template.steps.length - 1)) : b.template.steps.length - 1;
+    const template = { ...b.template, id: b.template.id || '__test_fetch__', steps: b.template.steps.slice(0, stepIndex + 1) };
+    const result = await executeFlow(ctx, { ownerId: b.ownerId, template, runtimeInputs: b.params, includeResponse: true });
+    return ok({ ok: result.ok, steps: result.steps, error: result.error, testedStepId: template.steps[template.steps.length - 1]?.id });
+  });
+
   /* ---------- History & Logs ([SYS] 4.4) ---------- */
   app.get('/api/history', async (req, reply) => {
     const q = req.query as { ownerId?: string; service?: string; success?: string };

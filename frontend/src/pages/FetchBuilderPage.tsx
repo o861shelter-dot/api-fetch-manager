@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, type FetchTemplate, type FlowStep, type FlowInput } from '../api/api';
+import { api, type FetchTemplate, type FlowStep, type FlowInput, type FetchTestStepResult } from '../api/api';
 import { useApp } from '../lib/appStore';
 import { useUI } from '../components/ui';
 import { Button } from '../components/Button';
@@ -202,7 +202,7 @@ function BuilderModal({ initial, ownerId, onClose, onSaved, ui }: { initial: Fet
  {/* Pane phải: step editor */}
  <div className="builder-main">
  {step ? (
- <StepEditor step={step} ownerId={ownerId} onChange={(p) => patchStep(activeStep, p)} onOpenJs={() => setJsOpen(true)} />
+ <StepEditor template={tpl} stepIndex={activeStep} step={step} ownerId={ownerId} ui={ui} onChange={(p) => patchStep(activeStep, p)} onOpenJs={() => setJsOpen(true)} />
  ) : <div className="empty">Chọn hoặc thêm step.</div>}
  </div>
  </div>
@@ -247,11 +247,66 @@ const HEADER_PRESETS: { label: string; key: string; value: string }[] = [
  { label: 'Accept: GitHub', key: 'Accept', value: 'application/vnd.github+json' },
 ];
 
-function StepEditor({ step, ownerId, onChange, onOpenJs }: { step: FlowStep; ownerId: string | null; onChange: (p: Partial<FlowStep>) => void; onOpenJs: () => void }) {
+function formatResponse(step?: FetchTestStepResult['steps'][number]): string {
+ if (!step?.response) return '';
+ if (step.response.json !== undefined) return JSON.stringify(step.response.json, null, 2);
+ try {
+ return JSON.stringify(JSON.parse(step.response.text), null, 2);
+ } catch {
+ return step.response.text;
+ }
+}
+
+function applyRuntimeParams(text: string, params: Record<string, unknown>): string {
+ return Object.entries(params).reduce((out, [key, value]) => {
+ const v = String(value ?? '');
+ return out.split(`{{${key}}}`).join(v).split(`{{input.${key}}}`).join(v);
+ }, text);
+}
+
+function shellSingleQuote(s: string): string {
+ return `'${s.split("'").join("'\\''")}'`;
+}
+
+function stepToCurl(step: FlowStep, params: Record<string, unknown>): string {
+ const method = step.method.toUpperCase();
+ const url = applyRuntimeParams(step.urlTemplate, params);
+ const parts = ['curl', '-X', method, shellSingleQuote(url)];
+ for (const [key, value] of Object.entries(step.headers ?? {})) {
+ if (!key) continue;
+ parts.push('-H', shellSingleQuote(`${key}: ${applyRuntimeParams(String(value), params)}`));
+ }
+ if (!['GET', 'HEAD'].includes(method) && step.bodyTemplate) {
+ parts.push('--data', shellSingleQuote(applyRuntimeParams(step.bodyTemplate, params)));
+ }
+ return parts.join(' \\\n  ');
+}
+
+function StepEditor({
+ template,
+ stepIndex,
+ step,
+ ownerId,
+ ui,
+ onChange,
+ onOpenJs,
+}: {
+ template: FetchTemplate;
+ stepIndex: number;
+ step: FlowStep;
+ ownerId: string | null;
+ ui: UI;
+ onChange: (p: Partial<FlowStep>) => void;
+ onOpenJs: () => void;
+}) {
  const headers = step.headers ?? {};
  const hEntries = Object.entries(headers);
  const extract = step.extract ?? [];
  const [bodyFormat, setBodyFormat] = useState<'json' | 'raw'>('json');
+ const [testParams, setTestParams] = useState('{}');
+ const [testing, setTesting] = useState(false);
+ const [testResult, setTestResult] = useState<FetchTestStepResult | null>(null);
+ const [curlText, setCurlText] = useState('');
 
  const setHeader = (idx: number, k: string, v: string) => {
  const e = hEntries.map((x) => [...x] as [string, string]);
@@ -271,6 +326,46 @@ function StepEditor({ step, ownerId, onChange, onOpenJs }: { step: FlowStep; own
  /* body có placeholder → không parse được, bỏ qua im lặng */
  }
  };
+ const testApi = async () => {
+ if (!ownerId) return ui.notify({ title: 'Chưa chọn owner', message: 'Chọn emailOwner ở thanh trên trước khi test API.', kind: 'warning' });
+ let params: Record<string, unknown>;
+ try {
+ params = JSON.parse(testParams || '{}');
+ } catch {
+ return ui.notify({ title: 'Params JSON không hợp lệ', message: 'Nhập object JSON, ví dụ { "repoName": "demo" }.', kind: 'error' });
+ }
+ const okc = await ui.confirm({
+ title: 'Test API?',
+ message: <>Step <b>{step.id}</b> sẽ gọi API thật để lấy response mẫu. Tiếp tục?</>,
+ confirmLabel: 'Test API',
+ });
+ if (!okc) return;
+ setTesting(true);
+ try {
+ const r = await api.post<FetchTestStepResult>('/fetch/test-step', { ownerId, template, stepIndex, params });
+ setTestResult(r);
+ const last = r.steps[r.steps.length - 1];
+ ui.notify({ title: r.ok ? 'Test API xong' : 'Test API lỗi', message: last?.error ?? `HTTP ${last?.status ?? 0}`, kind: r.ok ? 'success' : 'error' });
+ } catch (e: any) {
+ ui.notify({ title: 'Lỗi test API', message: e.message, kind: 'error' });
+ } finally {
+ setTesting(false);
+ }
+ };
+ const copyCurl = async () => {
+ let params: Record<string, unknown>;
+ try {
+ params = JSON.parse(testParams || '{}');
+ } catch {
+ return ui.notify({ title: 'Params JSON không hợp lệ', message: 'Nhập object JSON trước khi xuất curl.', kind: 'error' });
+ }
+ const curl = stepToCurl(step, params);
+ setCurlText(curl);
+ await navigator.clipboard.writeText(curl);
+ ui.notify({ title: 'Đã copy curl', message: `Curl cho step ${step.id}. Credential placeholder vẫn giữ nguyên để không lộ secret.`, kind: 'success' });
+ };
+ const tested = testResult?.steps[testResult.steps.length - 1];
+ const responseText = formatResponse(tested);
 
  return (
  <div>
@@ -322,6 +417,31 @@ function StepEditor({ step, ownerId, onChange, onOpenJs }: { step: FlowStep; own
  <Textarea rows={6} value={step.bodyTemplate} onChange={(e) => onChange({ bodyTemplate: e.target.value })} placeholder={'{ "name": "{{repoName | lower}}" }'} />
  </Field>
  <p className="page-desc">Placeholder: <span className="ph-hint">{'{{credential}}'}</span> <span className="ph-hint">{'{{var.x}}'}</span> <span className="ph-hint">{'{{ctx.step.field}}'}</span> <span className="ph-hint">{'{{input.x | upper}}'}</span></p>
+
+ <div className="sidebar__group-title">Test API</div>
+ <Field label="Params runtime (JSON)">
+ <Textarea rows={3} value={testParams} onChange={(e) => setTestParams(e.target.value)} placeholder={'{ "repoName": "demo" }'} />
+ </Field>
+ <div className="toolbar">
+ <Button icon={Icon.play({})} variant="primary" tooltip="Gọi API thật cho step đang chọn và hiển thị response mẫu để viết JSONPath extract" loading={testing} onClick={testApi}>Test API</Button>
+ <Button icon={Icon.copy({})} variant="ghost" tooltip="Xuất và copy lệnh curl cho step đang chọn, dùng params JSON hiện tại" onClick={copyCurl}>Copy curl</Button>
+ {tested && <span className={`badge ${tested.success ? 'badge--success' : 'badge--danger'}`}>{tested.status || 'ERR'} · {tested.durationMs}ms</span>}
+ </div>
+ {curlText && (
+ <div className="response-panel">
+ <div className="response-panel__head"><span>Curl theo step hiện tại</span></div>
+ <pre className="response-panel__body">{curlText}</pre>
+ </div>
+ )}
+ {responseText && (
+ <div className="response-panel">
+ <div className="response-panel__head">
+ <span>Response</span>
+ <Button iconOnly icon={Icon.copy({})} variant="ghost" tooltip="Copy toàn bộ response đã format" onClick={() => navigator.clipboard.writeText(responseText).then(() => ui.notify({ title: 'Đã copy response', message: 'Dán vào nơi cần kiểm tra JSONPath.', kind: 'success' }))} />
+ </div>
+ <pre className="response-panel__body">{responseText}</pre>
+ </div>
+ )}
 
  <div className="sidebar__group-title">Extract (JSONPath)</div>
  {extract.map((ex, i) => (

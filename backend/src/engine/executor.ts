@@ -31,11 +31,10 @@ export interface ExecuteResult {
     durationMs: number;
     extracted?: Record<string, unknown>;
     error?: string;
+    response?: { text: string; json?: unknown };
   }[];
   error?: string;
 }
-
-/** Che các token dạng Bearer/token trong string trước khi ghi log. */
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,9 +91,23 @@ function redact(s: string): string {
     .replace(/(sbp_)[A-Za-z0-9_]+/g, '$1***');
 }
 
+function redactKnownCredentials(s: string, credentials: Record<string, string>): string {
+  let out = s;
+  for (const secret of Object.values(credentials)) {
+    if (!secret) continue;
+    out = out.split(secret).join('***');
+  }
+  return out;
+}
+
+function debugText(s: string, credentials: Record<string, string>, redactValues: boolean): string {
+  const withoutStoredSecrets = redactKnownCredentials(s, credentials);
+  return redactValues ? redact(withoutStoredSecrets) : withoutStoredSecrets;
+}
+
 export async function executeFlow(
   ctx: AppContext,
-  opts: { ownerId: string; template: FetchTemplate; runtimeInputs?: Record<string, unknown> },
+  opts: { ownerId: string; template: FetchTemplate; runtimeInputs?: Record<string, unknown>; includeResponse?: boolean },
   httpFetch: typeof fetch = fetch,
 ): Promise<ExecuteResult> {
   const { ownerId, template } = opts;
@@ -123,6 +136,7 @@ export async function executeFlow(
   // credential map: gom key từ credentialRefs.
   const credKeys = (template.credentialRefs ?? []).map((r) => r.key);
   const credentials = await store.resolveCredentialsByKey(ctx, ownerId, credKeys);
+  const scrub = (s: string) => debugText(s, credentials, ctx.config.redactExecutionValues);
 
   const flowCtx: Record<string, unknown> = {};
   const result: ExecuteResult = { ok: true, ctx: flowCtx, steps: [] };
@@ -154,7 +168,10 @@ export async function executeFlow(
       } catch {
         parsed = responseText;
       }
-      if (!resp.ok) errMsg = `HTTP ${status}`;
+      if (!resp.ok) {
+        const excerpt = scrub(responseText.slice(0, 300));
+        errMsg = excerpt ? `HTTP ${status}: ${excerpt}` : `HTTP ${status}`;
+      }
     } catch (e: any) {
       errMsg = e?.message ?? String(e);
       success = false;
@@ -197,18 +214,33 @@ export async function executeFlow(
       method: step.method,
       url,
       requestSummary: {
-        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, redact(String(v))])),
-        bodyPreview: redact((body ?? '').slice(0, 500)),
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k, scrub(String(v))])),
+        bodyPreview: scrub((body ?? '').slice(0, 500)),
       },
       responseStatus: status,
-      responseSummary: redact(responseText.slice(0, 500)),
+      responseSummary: scrub(responseText.slice(0, 500)),
       durationMs,
       success,
       calledAt: now(),
     };
     const historyId = await store.addHistory(ctx, ownerId, historyEntry);
 
-    result.steps.push({ stepId: step.id, status, success, durationMs, extracted, error: errMsg });
+    const scrubbedResponseText = scrub(responseText);
+    let scrubbedJson: unknown;
+    try {
+      scrubbedJson = scrubbedResponseText ? JSON.parse(scrubbedResponseText) : undefined;
+    } catch {
+      scrubbedJson = undefined;
+    }
+    result.steps.push({
+      stepId: step.id,
+      status,
+      success,
+      durationMs,
+      extracted,
+      error: errMsg,
+      response: opts.includeResponse ? { text: scrubbedResponseText, ...(scrubbedJson !== undefined ? { json: scrubbedJson } : {}) } : undefined,
+    });
 
     // 4. Log chi tiết khi lỗi.
     if (!success) {

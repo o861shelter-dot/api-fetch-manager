@@ -6,6 +6,7 @@
 ## Khoanh vùng (điền sẵn)
 - FE: `src/pages/FetchBuilderPage.tsx` · `src/features/execute/ExecuteModal.tsx`
 - BE: `src/engine/executor.ts` · `placeholder.ts` · `extract.ts` · `transforms.ts` · `sandbox.ts` · `src/modules/parse-curl.ts`
+- Config/docs nếu thay đổi log execute: `src/config/env.ts` · `.env.example` · `docs/OPERATIONS.md`
 
 ## Chú ý đặc thù
 - Flow nhiều step + shared context `{{ctx.*}}`; input source runtime/store/context

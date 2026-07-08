@@ -76,6 +76,46 @@ describe('API integration (inject)', () => {
     expect(parsed.json().data.credentialRefs.length).toBeGreaterThan(0);
   });
 
+  it('fetch/test-step trả response JSON format-ready và không lộ credential đã lưu', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ login: 'octo', tokenEcho: 'seed_token' }),
+    })) as any;
+    try {
+      const own = await app.inject({ method: 'POST', url: '/api/owners', payload: { email: 'test-step@example.com' } });
+      const ownerId = own.json().data.id;
+      await app.inject({
+        method: 'POST',
+        url: `/api/owners/${ownerId}/credentials`,
+        payload: { key: 'github.token', value: 'seed_token', service: 'github.com' },
+      });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/fetch/test-step',
+        payload: {
+          ownerId,
+          stepIndex: 0,
+          template: {
+            name: 'GitHub - Get user',
+            service: 'github.com',
+            business: 'get-user',
+            credentialRefs: [{ placeholder: 'github.token', key: 'github.token' }],
+            steps: [{ id: 'me', method: 'GET', urlTemplate: 'https://api.github.com/user', headers: { Authorization: 'Bearer {{github.token}}' } }],
+          },
+        },
+      });
+      const body = res.json();
+      expect(body.ok).toBe(true);
+      expect(body.data.steps[0].response.json.login).toBe('octo');
+      expect(JSON.stringify(body)).not.toContain('seed_token');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('issue CRUD + markdown export', async () => {
     const created = await app.inject({
       method: 'POST',

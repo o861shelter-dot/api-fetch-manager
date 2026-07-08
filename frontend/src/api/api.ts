@@ -92,6 +92,19 @@ export interface FetchTemplate {
  createdAt: number;
  updatedAt: number;
 }
+export interface FetchTestStepResult {
+ ok: boolean;
+ testedStepId?: string;
+ steps: {
+ stepId: string;
+ status: number;
+ success: boolean;
+ durationMs: number;
+ error?: string;
+ response?: { text: string; json?: unknown };
+ }[];
+ error?: string;
+}
 export interface HistoryEntry {
  id: string;
  service: string;

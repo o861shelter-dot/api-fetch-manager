@@ -53,6 +53,8 @@ export interface AppConfig {
   httpRetries: number;
   /** Giới hạn response text đọc vào memory. */
   httpMaxResponseBytes: number;
+  /** Redact token-like debug values trong history/log executor; stored credentials vẫn luôn bị che. */
+  redactExecutionValues: boolean;
 }
 
 const PREFIX = 'API_FETCH_MANAGER_';
@@ -72,6 +74,14 @@ function required(name: string): string {
     );
   }
   return v;
+}
+
+function bool(name: string, fallback: boolean): boolean {
+  const v = get(name);
+  if (v === undefined) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(v.toLowerCase())) return true;
+  if (['0', 'false', 'no', 'off'].includes(v.toLowerCase())) return false;
+  throw new Error(`[config] ${PREFIX}${name} phải là true hoặc false.`);
 }
 
 /**
@@ -136,6 +146,7 @@ export function loadConfig(): AppConfig {
     httpTimeoutMs: Number(get('HTTP_TIMEOUT_MS') ?? 15_000),
     httpRetries: Number(get('HTTP_RETRIES') ?? 2),
     httpMaxResponseBytes: Number(get('HTTP_MAX_RESPONSE_BYTES') ?? 1_048_576),
+    redactExecutionValues: bool('REDACT_EXECUTION_VALUES', true),
   };
 
   if (storageMode === 'firebase') {
