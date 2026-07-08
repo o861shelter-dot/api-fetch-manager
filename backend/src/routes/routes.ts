@@ -1,6 +1,6 @@
 /**
  * routes.ts — Đăng ký toàn bộ REST API (prefix /api). Response chuẩn { ok, data?, error? }.
- * Map [SYS] 4 + 10.4/10.5.
+ * Map [SYS] 4 + 10.4/10.5 + addendum v1.2 (catalogs, flow-presets, credential-keys).
  */
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../context.js';
@@ -16,9 +16,7 @@ import { normalizeCredentialPayload } from '../lib/credential-import.js';
 import { now } from '../lib/ids.js';
 
 export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
- // AuthN/AuthZ tối thiểu: nếu ADMIN_TOKEN được cấu hình, mọi endpoint /api
- // (trừ health) phải gửi Authorization: Bearer. Firebase/file mode bắt buộc
- // có token ở config để tránh reveal/export plaintext public.
+ // AuthN/AuthZ tối thiểu: nếu ADMIN_TOKEN cấu hình, mọi /api (trừ health) cần Bearer.
  app.addHook('preHandler', async (req, reply) => {
  if (!req.url.startsWith('/api') || req.url === '/api/health') return;
  const token = ctx.config.adminToken;
@@ -54,6 +52,12 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  };
  });
  return ok(masked);
+ });
+
+ /** Danh sách key credential (không giải mã) — cho KeyPicker. */
+ app.get('/api/owners/:id/credential-keys', async (req) => {
+ const { id } = req.params as { id: string };
+ return ok(await store.listCredentialKeys(ctx, id));
  });
 
  app.post('/api/owners/:id/credentials', async (req, reply) => {
@@ -97,12 +101,7 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  return ok({ value: val });
  });
 
- /**
- * Nhập credential từ ngoài ([REQ] 2.1): body { payload, ownerId? }.
- * payload = JSON thuần | chuỗi JSON | base64 của JSON, cấu trúc
- * { email?, isSaveRtdbEmail?, userExtras: [{ key, value, service?, label? }] }.
- * Không có ownerId → tạo/dùng owner theo email trong payload.
- */
+ /** Nhập credential từ ngoài ([REQ] 2.1): body { payload, ownerId? }. */
  app.post('/api/credentials/import-json', async (req, reply) => {
  const b = req.body as { payload?: unknown; ownerId?: string };
  if (b?.payload === undefined) return reply.code(400).send(err('payload (JSON hoặc base64) là bắt buộc'));
@@ -140,7 +139,6 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  const data: any = { owners: {}, credentials: {}, templates: await store.listTemplates(ctx) };
  for (const o of owners) {
  data.owners[o.id] = o;
- // Export credential dạng plaintext để round-trip (dùng nội bộ / backup có kiểm soát).
  const creds = await store.listCredentials(ctx, o.id);
  data.credentials[o.id] = creds.map((c) => ({
  key: c.key,
@@ -159,7 +157,6 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  for (const [oldOwnerId, o] of Object.entries<any>(b?.owners ?? {})) {
  const owner = await store.createOwner(ctx, o.email, o.isSaveRtdbEmail ?? true);
  ownersCreated++;
- // Map credential theo key owner gốc trong export, tránh gán nhầm khi trùng email.
  const creds = b.credentials?.[oldOwnerId] ?? [];
  for (const c of creds) {
  await store.addCredential(ctx, owner.id, c);
@@ -167,6 +164,27 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  }
  }
  return ok({ ownersCreated, credsCreated });
+ });
+
+ /* ---------- Catalogs (danh mục dùng chung, addendum v1.2 §3) ---------- */
+ app.get('/api/catalogs', async (req, reply) => {
+ const q = req.query as { field?: string };
+ if (!q.field) return reply.code(400).send(err('field là bắt buộc'));
+ return ok(await store.listCatalog(ctx, q.field));
+ });
+ app.post('/api/catalogs', async (req, reply) => {
+ const b = req.body as { field?: string; value?: string };
+ if (!b?.field || !b?.value) return reply.code(400).send(err('field & value là bắt buộc'));
+ await store.addCatalog(ctx, b.field, b.value);
+ return ok({ saved: true });
+ });
+
+ /* ---------- Flow presets (mẫu lưu DB, addendum v1.2 §8) ---------- */
+ app.get('/api/flow-presets', async () => ok(await store.listFlowPresets(ctx)));
+ app.post('/api/flow-presets', async (req, reply) => {
+ const b = req.body as any;
+ if (!b?.name || !Array.isArray(b?.steps)) return reply.code(400).send(err('name & steps[] là bắt buộc'));
+ return ok(await store.saveFlowPreset(ctx, b));
  });
 
  /* ---------- Templates / Fetch Builder ([SYS] 4.3, 5) ---------- */
@@ -289,14 +307,12 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  return ok(await store.listExtractions(ctx, q));
  });
 
- /* ---------- Placeholder Engine helpers (dùng cho UI test/autocomplete) ---------- */
+ /* ---------- Placeholder Engine helpers ---------- */
  app.get('/api/engine/transforms', async () => ok(listTransforms()));
-
  app.post('/api/engine/resolve', async (req) => {
  const b = req.body as { template?: string; scope?: any };
  return ok({ result: resolveTemplate(b?.template ?? '', b?.scope ?? {}) });
  });
-
  app.post('/api/engine/sandbox-test', async (req, reply) => {
  const b = req.body as { code?: string; ctx?: any; inputs?: any; vars?: any };
  if (!b?.code) return reply.code(400).send(err('code là bắt buộc'));
