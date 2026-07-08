@@ -15,7 +15,8 @@ import { runSandbox } from '../engine/sandbox.js';
 import { now } from '../lib/ids.js';
 
 export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
- // AuthN tối thiểu: nếu ADMIN_TOKEN được cấu hình, mọi /api (trừ health) cần Bearer.
+ // AuthN/AuthZ tối thiểu: nếu ADMIN_TOKEN được cấu hình, mọi endpoint /api
+ // (trừ health) phải gửi Authorization: Bearer.
  app.addHook('preHandler', async (req, reply) => {
  if (!req.url.startsWith('/api') || req.url === '/api/health') return;
  const token = ctx.config.adminToken;
@@ -52,7 +53,7 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  return ok(masked);
  });
 
- /** Danh sách key credential (không giá trị) cho KeyPicker. */
+ /** Danh sách key duy nhất của owner (cho KeyPicker chèn placeholder). */
  app.get('/api/owners/:id/credential-keys', async (req) => {
  const { id } = req.params as { id: string };
  return ok(await store.listCredentialKeys(ctx, id));
@@ -92,6 +93,55 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
  const val = ctx.tryDecrypt({ valueEnc: c.valueEnc, iv: c.iv });
  if (val === null) return reply.code(409).send(err('Không giải mã được credential (sai ENCRYPTION_KEY?).'));
  return ok({ value: val });
+ });
+
+ /** Nhập credential từ ngoài ([REQ] 2.1): body { payload, ownerId? }. */
+ app.post('/api/credentials/import-json', async (req, reply) => {
+ const b = req.body as { payload?: unknown; ownerId?: string };
+ if (b?.payload === undefined) return reply.code(400).send(err('payload (JSON hoặc base64) là bắt buộc'));
+ let normalized;
+ try {
+ normalized = normalizeCredentialPayload(b.payload);
+ } catch (e: any) {
+ return reply.code(400).send(err(e?.message ?? 'payload không hợp lệ'));
+ }
+ if (normalized.items.length === 0) {
+ return reply.code(400).send(err('Không tìm thấy mục credential nào (userExtras/items/credentials rỗng).'));
+ }
+ let ownerId = b.ownerId;
+ if (!ownerId) {
+ if (!normalized.email) return reply.code(400).send(err('Thiếu ownerId và payload không có email để tạo owner.'));
+ const existing = (await store.listOwners(ctx)).find((o) => o.email === normalized.email);
+ ownerId = existing ? existing.id : (await store.createOwner(ctx, normalized.email, normalized.isSaveRtdbEmail ?? true)).id;
+ }
+ const credsCreated = await store.addCredentialsBulk(ctx, ownerId, normalized.items);
+ return ok({ ownerId, credsCreated });
+ });
+
+ /* ---------- Catalogs (danh mục dùng chung — addendum v1.2 §3) ---------- */
+ app.get('/api/catalogs', async (req) => {
+ const q = req.query as { field?: string };
+ if (!q.field) return ok([]);
+ return ok(await store.listCatalog(ctx, q.field));
+ });
+ app.post('/api/catalogs', async (req, reply) => {
+ const b = req.body as { field?: string; value?: string };
+ if (!b?.field || !b?.value) return reply.code(400).send(err('field & value là bắt buộc'));
+ return ok(await store.addCatalog(ctx, b.field, b.value));
+ });
+
+ /* ---------- Flow presets (lưu DB, addendum v1.2 §8) ---------- */
+ app.get('/api/flow-presets', async () => {
+ await store.ensureDefaultPresets(ctx);
+ return ok(await store.listFlowPresets(ctx));
+ });
+ app.post('/api/flow-presets', async (req, reply) => {
+ const b = req.body as any;
+ if (!b?.name || !Array.isArray(b?.steps)) return reply.code(400).send(err('name & steps[] là bắt buộc'));
+ return ok(await store.saveFlowPreset(ctx, {
+ name: b.name, service: b.service ?? '', business: b.business ?? '',
+ stopOnError: b.stopOnError, inputs: b.inputs, credentialRefs: b.credentialRefs, steps: b.steps,
+ }));
  });
 
  /* ---------- Import / Export ([SYS] 4.1) ---------- */

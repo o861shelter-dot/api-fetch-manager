@@ -9,6 +9,8 @@ import type {
  Owner,
  Credential,
  FetchTemplate,
+ FlowDef,
+ FlowPreset,
  HistoryEntry,
  LogEntry,
  Issue,
@@ -62,6 +64,22 @@ export async function addCredential(
  return { ...created, id };
 }
 
+/** Thêm nhiều credential 1 lần (import-json). service suy từ prefix key nếu thiếu. */
+export async function addCredentialsBulk(
+ ctx: AppContext,
+ ownerId: string,
+ items: { key: string; value: string; service?: string; label?: string }[],
+): Promise<number> {
+ let n = 0;
+ for (const it of items) {
+ if (!it || !it.key || it.value === undefined) continue;
+ const service = it.service ?? (it.key.includes('.') ? it.key.split('.')[0] : 'unknown');
+ await addCredential(ctx, ownerId, { key: it.key, value: String(it.value), service, label: it.label });
+ n++;
+ }
+ return n;
+}
+
 export async function updateCredential(
  ctx: AppContext,
  ownerId: string,
@@ -84,6 +102,12 @@ export async function removeCredential(ctx: AppContext, ownerId: string, credId:
  await ctx.db.keys.remove(`credentials/${ownerId}/${credId}`);
 }
 
+/** Danh sách key duy nhất của owner (cho KeyPicker). */
+export async function listCredentialKeys(ctx: AppContext, ownerId: string): Promise<string[]> {
+ const all = await listCredentials(ctx, ownerId);
+ return [...new Set(all.map((c) => c.key))];
+}
+
 /** Lấy credential đã giải mã theo key (in-memory, không log). Trả map key→plaintext. */
 export async function resolveCredentialsByKey(
  ctx: AppContext,
@@ -99,40 +123,114 @@ export async function resolveCredentialsByKey(
  return out;
 }
 
-/** Danh sách key credential (không giá trị) — cho KeyPicker. Trả [{key, service}] distinct. */
-export async function listCredentialKeys(ctx: AppContext, ownerId: string): Promise<{ key: string; service: string }[]> {
- const all = await listCredentials(ctx, ownerId);
- const seen = new Map<string, string>();
- for (const c of all) if (!seen.has(c.key)) seen.set(c.key, c.service);
- return [...seen].map(([key, service]) => ({ key, service }));
-}
-
-/* ---------------- Catalogs (rtdb-keys/catalogs/<field>) — danh mục dùng chung ---------------- */
+/* ---------------- Catalogs (danh mục dùng chung — rtdb-keys/catalogs) ---------------- */
 
 export async function listCatalog(ctx: AppContext, field: string): Promise<string[]> {
- const arr = await ctx.db.keys.get<string[]>(`catalogs/${field}`);
- return Array.isArray(arr) ? arr : [];
+ return (await ctx.db.keys.get<string[]>(`catalogs/${field}`)) ?? [];
 }
 export async function addCatalog(ctx: AppContext, field: string, value: string): Promise<string[]> {
  const cur = await listCatalog(ctx, field);
- if (value && !cur.includes(value)) cur.push(value);
+ const v = value.trim();
+ if (v && !cur.includes(v)) cur.push(v);
  await ctx.db.keys.set(`catalogs/${field}`, cur);
  return cur;
 }
 
-/* ---------------- Flow presets (rtdb-keys/flow-presets) — mẫu flow dùng chung ---------------- */
+/* ---------------- Flow presets (rtdb-keys/flow-presets) ---------------- */
 
-export async function listFlowPresets(ctx: AppContext): Promise<FetchTemplate[]> {
- const map = await ctx.db.keys.query<FetchTemplate>('flow-presets');
- return Object.entries(map).map(([id, t]) => ({ ...t, id }));
+const DEFAULT_PRESETS: FlowDef[] = [
+ {
+ name: 'GitHub - Tạo repo',
+ service: 'github.com',
+ business: 'create-repo',
+ stopOnError: true,
+ inputs: [{ name: 'repoName', required: true, source: 'runtime' }],
+ credentialRefs: [{ placeholder: 'github.token', key: 'github.token' }],
+ steps: [
+ {
+ id: 'createRepo',
+ method: 'POST',
+ urlTemplate: 'https://api.github.com/user/repos',
+ headers: { Authorization: 'Bearer {{github.token}}', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+ bodyTemplate: '{"name":"{{repoName | lower | replace(" ", "-")}}","private":true}',
+ extract: [{ field: 'repoUrl', jsonPath: '$.html_url', pinToVar: 'github.lastRepoUrl' }],
+ },
+ ],
+ },
+ {
+ name: 'GitHub - Get user',
+ service: 'github.com',
+ business: 'get-user',
+ stopOnError: true,
+ credentialRefs: [{ placeholder: 'github.token', key: 'github.token' }],
+ steps: [
+ {
+ id: 'getUser',
+ method: 'GET',
+ urlTemplate: 'https://api.github.com/user',
+ headers: { Authorization: 'Bearer {{github.token}}', Accept: 'application/vnd.github+json' },
+ extract: [{ field: 'login', jsonPath: '$.login' }],
+ },
+ ],
+ },
+ {
+ name: 'GitHub - Dispatch workflow',
+ service: 'github.com',
+ business: 'dispatch-workflow',
+ stopOnError: true,
+ inputs: [
+ { name: 'owner', required: true, source: 'runtime' },
+ { name: 'repo', required: true, source: 'runtime' },
+ { name: 'workflowId', required: true, source: 'runtime' },
+ { name: 'ref', required: true, source: 'runtime' },
+ ],
+ credentialRefs: [{ placeholder: 'github.token', key: 'github.token' }],
+ steps: [
+ {
+ id: 'dispatch',
+ method: 'POST',
+ urlTemplate: 'https://api.github.com/repos/{{input.owner}}/{{input.repo}}/actions/workflows/{{input.workflowId}}/dispatches',
+ headers: { Authorization: 'Bearer {{github.token}}', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+ bodyTemplate: '{"ref":"{{input.ref}}"}',
+ extract: [],
+ },
+ ],
+ },
+ {
+ name: 'Cloudflare - Account id',
+ service: 'cloudflare.com',
+ business: 'get-account-id',
+ stopOnError: true,
+ credentialRefs: [{ placeholder: 'cloudflare.token', key: 'cloudflare.token' }],
+ steps: [
+ {
+ id: 'accounts',
+ method: 'GET',
+ urlTemplate: 'https://api.cloudflare.com/client/v4/accounts',
+ headers: { Authorization: 'Bearer {{cloudflare.token}}', 'Content-Type': 'application/json' },
+ extract: [{ field: 'accountId', jsonPath: '$.result[0].id', pinToVar: 'cloudflare.accountId' }],
+ },
+ ],
+ },
+];
+
+export async function listFlowPresets(ctx: AppContext): Promise<FlowPreset[]> {
+ const map = await ctx.db.keys.query<FlowPreset>('flow-presets');
+ return Object.entries(map).map(([id, p]) => ({ ...p, id }));
 }
-export async function saveFlowPreset(
- ctx: AppContext,
- preset: Omit<FetchTemplate, 'id' | 'createdAt' | 'updatedAt'>,
-): Promise<FetchTemplate> {
- const id = await ctx.db.keys.push('flow-presets', { ...preset, isPreset: true, createdAt: now(), updatedAt: now() });
- const created = (await ctx.db.keys.get<FetchTemplate>(`flow-presets/${id}`))!;
- return { ...created, id };
+export async function getFlowPreset(ctx: AppContext, id: string): Promise<FlowPreset | null> {
+ const p = await ctx.db.keys.get<FlowPreset>(`flow-presets/${id}`);
+ return p ? { ...p, id } : null;
+}
+export async function saveFlowPreset(ctx: AppContext, def: FlowDef): Promise<FlowPreset> {
+ const id = await ctx.db.keys.push('flow-presets', { ...def, isPreset: true, createdAt: now(), updatedAt: now() });
+ return (await getFlowPreset(ctx, id))!;
+}
+/** Seed 4 mẫu mặc định nếu chưa có preset nào. */
+export async function ensureDefaultPresets(ctx: AppContext): Promise<void> {
+ const existing = await listFlowPresets(ctx);
+ if (existing.length > 0) return;
+ for (const p of DEFAULT_PRESETS) await saveFlowPreset(ctx, p);
 }
 
 /* ---------------- Templates (lưu trong rtdb-keys/templates) ---------------- */

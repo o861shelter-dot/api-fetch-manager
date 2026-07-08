@@ -69,8 +69,25 @@ export interface FetchTemplate {
  inputs?: FlowInput[];
  credentialRefs?: CredentialRef[];
  steps: FlowStep[];
- /** true nếu là mẫu dùng chung (flow-presets), không gắn owner. */
- isPreset?: boolean;
+ createdAt: number;
+ updatedAt: number;
+}
+
+/** Định nghĩa flow (không kèm id/timestamp) — dùng cho preset & tạo mới. */
+export interface FlowDef {
+ name: string;
+ service: string;
+ business: string;
+ stopOnError?: boolean;
+ inputs?: FlowInput[];
+ credentialRefs?: CredentialRef[];
+ steps: FlowStep[];
+}
+
+/** Flow preset lưu trong DB, lấy ra tạo flow cho owner khác ([UI] addendum v1.2 §8). */
+export interface FlowPreset extends FlowDef {
+ id: string;
+ isPreset: true;
  createdAt: number;
  updatedAt: number;
 }
@@ -104,7 +121,7 @@ export interface LogEntry {
 export interface IssueElement {
  selector: string;
  outerHTML: string;
- /** Text (innerText) của element đã chọn — để user biết chức năng nào được chọn. */
+ /** Text hiển thị của element (innerText cắt gọn) — để user biết đã chọn đúng chức năng. */
  text?: string;
  boundingRect?: Record<string, number>;
 }

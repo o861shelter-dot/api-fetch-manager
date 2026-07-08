@@ -15,6 +15,20 @@ interface SelEl {
  rect: DOMRect;
 }
 
+const HOTKEY = ((import.meta.env.VITE_API_FETCH_MANAGER_INSPECT_HOTKEY as string) || 'Ctrl+Shift+J');
+
+function matchHotkey(e: KeyboardEvent, spec: string): boolean {
+ const parts = spec.toLowerCase().split('+').map((s) => s.trim());
+ const key = parts[parts.length - 1];
+ return (
+ e.ctrlKey === parts.includes('ctrl') &&
+ e.shiftKey === parts.includes('shift') &&
+ e.altKey === parts.includes('alt') &&
+ e.metaKey === (parts.includes('meta') || parts.includes('cmd')) &&
+ e.key.toLowerCase() === key
+ );
+}
+
 function cssPath(el: HTMLElement): string {
  if (el.id) return `#${el.id}`;
  const parts: string[] = [];
@@ -23,7 +37,7 @@ function cssPath(el: HTMLElement): string {
  while (cur && cur.nodeType === 1 && depth < 4) {
  let sel = cur.tagName.toLowerCase();
  if (cur.className && typeof cur.className === 'string') {
- const cls = cur.className.split(/\s+/).filter((c) => c && !c.startsWith('inspect-') && c !== 'afm-tooltip').slice(0, 2);
+ const cls = cur.className.split(/\s+/).filter((c) => c && !c.startsWith('inspect-')).slice(0, 2);
  if (cls.length) sel += '.' + cls.join('.');
  }
  parts.unshift(sel);
@@ -33,80 +47,60 @@ function cssPath(el: HTMLElement): string {
  return parts.join(' > ');
 }
 
-function elText(el: HTMLElement): string {
- return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-}
-
 /**
- * Inspect Element Mode ([UI] 6 + SPEC_UI addendum v1.2 §5).
- * - Bật qua hotkey toàn cục (Ctrl+Shift+J) hoặc nút Topbar.
+ * Inspect Element Mode ([UI] 6 + addendum v1.2 §5).
+ * - Hotkey toàn cục (mặc định Ctrl+Shift+J) bật ở mọi form/modal.
  * - Toolbar: Tạo issue (n) · Tạm ngưng · Thoát. ESC = thoát.
- * - Tạm ngưng / mở form issue -> nhả con trỏ (class inspect-paused), không bắt sự kiện.
- * - Chạy được cả trên modal (chỉ loại trừ thanh công cụ inspect).
- * - Mỗi element lưu thêm text; panel hiển thị #, selector, text theo row.
+ * - Tạm ngưng / mở form → nhả con trỏ (không bắt sự kiện) để thao tác form khác.
+ * - Chạy được trên modal (chỉ loại trừ chính toolbar inspect).
+ * - Mỗi element lưu thêm text; panel dạng row có STT + Selector + Text.
  */
-export function InspectMode({ onCreated }: { onCreated?: () => void }) {
- const { inspect, setInspect, inspectPaused, setInspectPaused } = useApp();
+export function InspectMode() {
+ const { inspect, setInspect } = useApp();
  const ui = useUI();
  const [selected, setSelected] = useState<SelEl[]>([]);
+ const [paused, setPaused] = useState(false);
  const [formOpen, setFormOpen] = useState(false);
  const hoverRef = useRef<HTMLElement | null>(null);
  const selectedRef = useRef<SelEl[]>([]);
  selectedRef.current = selected;
 
- const capturing = inspect && !inspectPaused && !formOpen;
-
- const exit = () => {
+ // Hotkey toàn cục (luôn lắng nghe, kể cả khi chưa inspect).
+ useEffect(() => {
+ const onKey = (e: KeyboardEvent) => {
+ if (matchHotkey(e, HOTKEY)) {
+ e.preventDefault();
+ setInspect(true);
+ } else if (e.key === 'Escape' && inspect) {
  setInspect(false);
- setInspectPaused(false);
- setFormOpen(false);
+ }
  };
+ document.addEventListener('keydown', onKey, true);
+ return () => document.removeEventListener('keydown', onKey, true);
+ }, [inspect, setInspect]);
 
- // Dọn class + reset khi tắt inspect
+ // Nhả/bắt con trỏ theo trạng thái paused hoặc form mở.
+ useEffect(() => {
+ const idle = paused || formOpen;
+ document.body.classList.toggle('inspect-paused', inspect && idle);
+ }, [paused, formOpen, inspect]);
+
  useEffect(() => {
  if (!inspect) {
  document.body.classList.remove('inspecting', 'inspect-paused');
- document.querySelectorAll('.inspect-hover,.inspect-selected').forEach((n) =>
- n.classList.remove('inspect-hover', 'inspect-selected'),
- );
+ document.querySelectorAll('.inspect-hover,.inspect-selected').forEach((n) => n.classList.remove('inspect-hover', 'inspect-selected'));
  setSelected([]);
+ setPaused(false);
  setFormOpen(false);
- setInspectPaused(false);
  return;
  }
  document.body.classList.add('inspecting');
- }, [inspect, setInspectPaused]);
 
- // Nhả con trỏ khi tạm ngưng hoặc mở form
- useEffect(() => {
- if (!inspect) return;
- document.body.classList.toggle('inspect-paused', inspectPaused || formOpen);
- if (hoverRef.current) {
- hoverRef.current.classList.remove('inspect-hover');
- hoverRef.current = null;
- }
- }, [inspect, inspectPaused, formOpen]);
-
- // ESC = thoát (khi không mở form)
- useEffect(() => {
- if (!inspect) return;
- const onKey = (e: KeyboardEvent) => {
- if (e.key === 'Escape' && !formOpen) {
- e.preventDefault();
- exit();
- }
- };
- window.addEventListener('keydown', onKey, true);
- return () => window.removeEventListener('keydown', onKey, true);
- // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [inspect, formOpen]);
-
- // Bắt hover/click khi đang capturing
- useEffect(() => {
- if (!capturing) return;
- const isTool = (t: HTMLElement) => t.closest('.inspect-toolbar');
+ const isTool = (t: HTMLElement) => t.closest('.inspect-toolbar, .afm-tooltip');
+ const active = () => inspect && !paused && !formOpen;
 
  const onOver = (e: MouseEvent) => {
+ if (!active()) return;
  const t = e.target as HTMLElement;
  if (isTool(t)) return;
  if (hoverRef.current) hoverRef.current.classList.remove('inspect-hover');
@@ -114,6 +108,7 @@ export function InspectMode({ onCreated }: { onCreated?: () => void }) {
  if (!t.classList.contains('inspect-selected')) t.classList.add('inspect-hover');
  };
  const onClick = (e: MouseEvent) => {
+ if (!active()) return;
  const t = e.target as HTMLElement;
  if (isTool(t)) return;
  e.preventDefault();
@@ -127,17 +122,24 @@ export function InspectMode({ onCreated }: { onCreated?: () => void }) {
  t.classList.add('inspect-selected');
  setSelected((s) => [
  ...s,
- { el: t, selector: cssPath(t), outerHTML: t.outerHTML.slice(0, 500), text: elText(t), rect: t.getBoundingClientRect() },
+ {
+ el: t,
+ selector: cssPath(t),
+ outerHTML: t.outerHTML.slice(0, 500),
+ text: (t.innerText || t.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+ rect: t.getBoundingClientRect(),
+ },
  ]);
  }
  };
+
  document.addEventListener('mouseover', onOver, true);
  document.addEventListener('click', onClick, true);
  return () => {
  document.removeEventListener('mouseover', onOver, true);
  document.removeEventListener('click', onClick, true);
  };
- }, [capturing]);
+ }, [inspect, paused, formOpen]);
 
  if (!inspect) return null;
 
@@ -145,22 +147,27 @@ export function InspectMode({ onCreated }: { onCreated?: () => void }) {
  <>
  <div className="inspect-toolbar">
  <Button
- icon={Icon.bug({})}
- tooltip="Mở form tạo issue từ các element đã chọn (con trỏ sẽ nhả ra)"
  variant="primary"
+ icon={Icon.bug({})}
+ tooltip="Mở form tạo issue từ các element đã chọn"
  disabled={selected.length === 0}
  onClick={() => setFormOpen(true)}
  >
  Tạo issue ({selected.length})
  </Button>
  <Button
- icon={inspectPaused ? Icon.play({}) : Icon.history({})}
- tooltip={inspectPaused ? 'Tiếp tục bắt element' : 'Tạm ngưng để thao tác form khác, giữ nguyên element đã chọn'}
- onClick={() => setInspectPaused(!inspectPaused)}
+ icon={Icon.target({})}
+ tooltip={paused ? 'Tiếp tục bắt element' : 'Tạm ngưng bắt element để thao tác form khác (giữ nguyên đã chọn)'}
+ onClick={() => setPaused((p) => !p)}
  >
- {inspectPaused ? 'Tiếp tục' : 'Tạm ngưng'}
+ {paused ? 'Tiếp tục' : 'Tạm ngưng'}
  </Button>
- <Button icon={Icon.x({})} tooltip="Thoát chế độ inspect (ESC)" variant="ghost" onClick={exit}>
+ <Button
+ variant="ghost"
+ icon={Icon.x({})}
+ tooltip="Thoát chế độ inspect (ESC)"
+ onClick={() => setInspect(false)}
+ >
  Thoát
  </Button>
  </div>
@@ -168,10 +175,7 @@ export function InspectMode({ onCreated }: { onCreated?: () => void }) {
  <IssueForm
  elements={selected}
  onClose={() => setFormOpen(false)}
- onSaved={() => {
- setFormOpen(false);
- onCreated?.();
- }}
+ onSaved={() => { setFormOpen(false); setInspect(false); }}
  ui={ui}
  />
  )}
@@ -230,15 +234,15 @@ function IssueForm({
  wide
  footer={
  <>
- <Button variant="ghost" tooltip="Hủy, không tạo issue" onClick={onClose}>Hủy</Button>
- <Button variant="primary" icon={Icon.save({})} tooltip="Lưu issue vào hệ thống" loading={saving} onClick={save}>Lưu issue</Button>
+ <Button variant="ghost" tooltip="Hủy" onClick={onClose}>Hủy</Button>
+ <Button variant="primary" icon={Icon.save({})} tooltip="Lưu issue" loading={saving} onClick={save}>Lưu issue</Button>
  </>
  }
  >
  <Field label="Tiêu đề"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="VD: Button lưu không phản hồi" /></Field>
- <Field label="Mô tả / các bước gây lỗi"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+ <Field label="Mô tả (các bước gây lỗi / yêu cầu)"><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
  <Field label="Kết quả mong muốn"><Textarea rows={2} value={expectedResult} onChange={(e) => setExpectedResult(e.target.value)} /></Field>
- <label className="field-label">Element đã chọn ({elements.length})</label>
+ <label className="field"><span>Element đã chọn ({elements.length})</span></label>
  <div className="sel-list">
  <div className="sel-item" style={{ fontWeight: 500 }}>
  <span className="idx">#</span>

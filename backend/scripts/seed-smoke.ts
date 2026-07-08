@@ -1,8 +1,6 @@
 /**
  * seed-smoke.ts — Seed dữ liệu mẫu (PLAN Bước 4.3) + 4 flow preset mặc định.
  * ⚠️ CHỈ dùng dữ liệu GIẢ. KHÔNG dùng secret thật đã lộ trong doc.
- *
- * Chạy: npm run seed (mặc định storage=file để giữ dữ liệu qua restart)
  */
 import { createContext } from '../src/context.js';
 import * as store from '../src/modules/stores.js';
@@ -119,10 +117,15 @@ async function main() {
  await store.setVariable(ctx, 'global', 'api.base', 'https://api.example.com', 'manual');
  await store.setVariable(ctx, owner.id, 'github.org', 'demo-org', 'manual');
 
- // danh mục dùng chung mẫu
+ // Danh mục dùng chung mẫu
  await store.addCatalog(ctx, 'service', 'github.com');
  await store.addCatalog(ctx, 'service', 'cloudflare.com');
  await store.addCatalog(ctx, 'business', 'create-repo');
+
+ // Flow presets mặc định (4 mẫu) — seed vào DB để lấy ra dùng.
+ await store.ensureDefaultPresets(ctx);
+ const presets = await store.listFlowPresets(ctx);
+ console.log(`[seed] flow-presets: ${presets.length}`);
 
  await store.saveTemplate(ctx, {
  name: 'Demo - Echo 2 step',
@@ -132,37 +135,17 @@ async function main() {
  inputs: [{ name: 'repoName', required: true, source: 'runtime' }],
  credentialRefs: [{ placeholder: 'github.token', key: 'github.token' }],
  steps: [
- {
- id: 'auth',
- method: 'POST',
- urlTemplate: 'https://httpbin.org/anything',
- headers: { 'Content-Type': 'application/json' },
- bodyTemplate: '{"token":"{{github.token}}"}',
- extract: [{ field: 'echoedToken', jsonPath: '$.json.token' }],
- },
- {
- id: 'createRepo',
- method: 'POST',
- urlTemplate: 'https://httpbin.org/anything',
- headers: { 'Content-Type': 'application/json' },
- bodyTemplate: '{"name":"{{repoName | lower | replace(" ", "-")}}"}',
- extract: [{ field: 'repoName', jsonPath: '$.json.name', pinToVar: 'github.lastRepo' }],
- },
+ { id: 'auth', method: 'POST', urlTemplate: 'https://httpbin.org/anything', headers: { 'Content-Type': 'application/json' }, bodyTemplate: '{"token":"{{github.token}}"}', extract: [{ field: 'echoedToken', jsonPath: '$.json.token' }] },
+ { id: 'createRepo', method: 'POST', urlTemplate: 'https://httpbin.org/anything', headers: { 'Content-Type': 'application/json' }, bodyTemplate: '{"name":"{{repoName | lower | replace(" ", "-")}}"}', extract: [{ field: 'repoName', jsonPath: '$.json.name', pinToVar: 'github.lastRepo' }] },
  ],
  });
  console.log('[seed] template: Demo - Echo 2 step');
 
  await store.createIssue(ctx, {
- type: 'bug',
- title: 'Demo: nút lưu không phản hồi',
- description: 'Bấm lưu không có gì xảy ra',
- expectedResult: 'Lưu thành công và hiện toast',
- elements: [{ selector: '#save-btn', outerHTML: '<button id="save-btn">Lưu</button>', text: 'Lưu' }],
- status: 'open',
+ type: 'bug', title: 'Demo: nút lưu không phản hồi', description: 'Bấm lưu không có gì xảy ra',
+ expectedResult: 'Lưu thành công và hiện toast', elements: [{ selector: '#save-btn', outerHTML: '<button>Lưu</button>', text: 'Lưu' }], status: 'open',
  });
  console.log('[seed] issue: 1');
-
- await seedPresets(ctx);
 
  console.log('[seed] ✅ Hoàn tất seed dữ liệu mẫu (GIẢ).');
  process.exit(0);
