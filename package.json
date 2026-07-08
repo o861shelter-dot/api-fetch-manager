@@ -20,6 +20,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@playwright/mcp": "^0.0.77",
     "concurrently": "^9.2.3"
   }
 }

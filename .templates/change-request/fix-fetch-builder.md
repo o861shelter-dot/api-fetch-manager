@@ -15,3 +15,4 @@
 
 ## Test hồi quy bắt buộc
 - [ ] `executor.test.ts` (flow 2 step + stopOnError + redact) · `extract.test.ts` · `placeholder.test.ts` · `sandbox.test.ts` xanh
+- [ ] Nếu đụng Builder modal: smoke desktop/tablet/mobile, kiểm tra không tràn ngang footer/step editor.

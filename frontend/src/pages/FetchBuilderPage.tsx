@@ -170,7 +170,7 @@ function BuilderModal({ initial, ownerId, onClose, onSaved, ui }: { initial: Fet
  <Modal title={tpl.id ? 'Sửa flow' : 'Fetch Flow Builder'} onClose={onClose} wide footer={
  <>
  <Button variant="ghost" icon={Icon.download({})} tooltip="Dán curl để tự sinh 1 step (method/url/header/body)" onClick={() => setCurlOpen(true)}>Từ curl</Button>
- <div style={{ flex: 1 }} />
+ <div className="modal__foot-spacer" />
  <Button variant="ghost" icon={Icon.x({})} tooltip="Đóng, không lưu" onClick={onClose}>Hủy</Button>
  <Button icon={Icon.copy({})} tooltip="Lưu flow này thành mẫu dùng chung cho owner khác" loading={saving} onClick={() => persist(true)}>Lưu thành mẫu</Button>
  <Button variant="primary" icon={Icon.save({})} tooltip="Lưu toàn bộ flow" loading={saving} onClick={() => persist(false)}>Lưu flow</Button>
@@ -185,9 +185,9 @@ function BuilderModal({ initial, ownerId, onClose, onSaved, ui }: { initial: Fet
 
  <InputsEditor inputs={tpl.inputs ?? []} onChange={(inputs) => patch({ inputs })} />
 
- <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' }}>
+ <div className="builder-layout">
  {/* Pane trái: steps */}
- <div style={{ width: 180, flex: '0 0 180px' }}>
+ <div className="builder-steps">
  <div className="sidebar__group-title">Steps</div>
  {tpl.steps.map((s, i) => (
  <div key={s.id} className={`nav-item ${i === activeStep ? 'active' : ''}`} onClick={() => setActiveStep(i)}>
@@ -200,7 +200,7 @@ function BuilderModal({ initial, ownerId, onClose, onSaved, ui }: { initial: Fet
  </div>
 
  {/* Pane phải: step editor */}
- <div style={{ flex: 1, minWidth: 0 }}>
+ <div className="builder-main">
  {step ? (
  <StepEditor step={step} ownerId={ownerId} onChange={(p) => patchStep(activeStep, p)} onOpenJs={() => setJsOpen(true)} />
  ) : <div className="empty">Chọn hoặc thêm step.</div>}

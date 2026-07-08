@@ -5,7 +5,6 @@ Map: [SYS] 8 · [REQ] 4. Toàn bộ hệ thống đóng gói **1 Docker image** 
 ## 1. Build & chạy bằng Docker Compose (self-host)
 
 ```bash
-cd app
 cp .env.example .env
 # Điền tối thiểu:
 #   API_FETCH_MANAGER_ENCRYPTION_KEY=<openssl rand -base64 32>
@@ -25,7 +24,6 @@ curl http://localhost:8080/api/health
 
 ## 2. Build image thủ công
 ```bash
-cd app
 docker build -t api-fetch-manager:latest -f Dockerfile .
 docker run -d --name afm -p 8080:8080 \
   -e API_FETCH_MANAGER_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
@@ -50,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t api-fetch-manager:latest -f app/Dockerfile app
+        run: docker build -t api-fetch-manager:latest -f Dockerfile .
       - name: Run container
         env:
           API_FETCH_MANAGER_ENCRYPTION_KEY: ${{ secrets.API_FETCH_MANAGER_ENCRYPTION_KEY }}
@@ -75,7 +73,7 @@ trigger: [main]
 pool:
   vmImage: 'ubuntu-latest'   # hoặc self-hosted Linux agent
 steps:
-  - script: docker build -t api-fetch-manager:latest -f app/Dockerfile app
+  - script: docker build -t api-fetch-manager:latest -f Dockerfile .
     displayName: Build image
   - script: |
       docker rm -f afm || true

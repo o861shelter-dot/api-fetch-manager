@@ -234,6 +234,9 @@
  padding: var(--sp-3) var(--sp-4);
  border-top: 1px solid var(--border);
 }
+.modal__foot-spacer {
+ flex: 1;
+}
 .modal--notify .modal__body {
  display: flex;
  gap: var(--sp-3);
@@ -319,6 +322,19 @@
 }
 .row > .btn--icon {
  flex: 0 0 30px;
+}
+.builder-layout {
+ display: flex;
+ gap: var(--sp-3);
+ margin-top: var(--sp-3);
+}
+.builder-steps {
+ width: 180px;
+ flex: 0 0 180px;
+}
+.builder-main {
+ flex: 1;
+ min-width: 0;
 }
 
 /* ---------- Rule chung: cặp label ↔ value (addendum v1.2 §2) ----------
@@ -599,6 +615,35 @@ body.inspecting .overlay {
 
 /* ---------- Responsive ([UI] 2) ---------- */
 @media (max-width: 767px) {
+ .overlay {
+ padding: var(--sp-2);
+ }
+ .modal {
+ max-height: calc(100vh - var(--sp-4));
+ }
+ .modal__foot {
+ flex-wrap: wrap;
+ }
+ .modal__foot-spacer {
+ display: none;
+ }
+ .modal__foot .btn {
+ flex: 1 1 auto;
+ }
+ .row {
+ flex-wrap: wrap;
+ align-items: flex-start;
+ }
+ .row > * {
+ min-width: 0;
+ }
+ .builder-layout {
+ flex-direction: column;
+ }
+ .builder-steps {
+ width: 100%;
+ flex: 0 0 auto;
+ }
  .sidebar {
  position: fixed;
  left: 0;

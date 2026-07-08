@@ -3,7 +3,7 @@
 Map mọi acceptance criteria [SYS] 9 & 10.7 + checklist [UI] 9 & 10.7. Unit/integration test tự động ở `backend/test/*` (chạy `npm test`). Bảng dưới là test case nghiệm thu.
 
 ## A. Backend — tự động (vitest)
-Chạy: `cd app/backend && npm test` → **47 tests / 8 files PASS**, coverage core **83%** (engine ~95%).
+Chạy từ repo root: `npm test` → **63 tests / 11 files PASS**.
 
 | ID | Mô tả | Bước | Kỳ vọng | Map | Trạng thái |
 |---|---|---|---|---|---|
@@ -54,7 +54,7 @@ Chạy: `cd app/backend && npm test` → **47 tests / 8 files PASS**, coverage c
 
 ## Cách chạy lại
 ```bash
-cd app && npm install
+npm install
 npm test                     # backend unit + integration (Phase 4.1)
 npm run build                # build FE+BE (kiểm tra tsc)
 grep -rn "alert(" frontend/src   # UI-04: phải rỗng (trừ Icon.alert)

@@ -4,7 +4,7 @@ Map: PLAN Bước 4.3. Dữ liệu seed là **GIẢ** (không dùng secret thậ
 
 ## 1. Seed
 ```bash
-cd app/backend
+cd backend
 export API_FETCH_MANAGER_STORAGE_MODE=file
 export API_FETCH_MANAGER_DATA_DIR=.data
 export API_FETCH_MANAGER_ENCRYPTION_KEY="$(openssl rand -base64 32)"
@@ -48,5 +48,5 @@ curl -s "localhost:8080/api/extractions?ownerId=<ownerId>"
 
 ## 4. Kiểm tra ciphertext at-rest
 ```bash
-grep -c "ghp_FAKE_DEMO" app/backend/.data/rtdb-keys.json   # phải = 0
+grep -c "ghp_FAKE_DEMO" backend/.data/rtdb-keys.json   # phải = 0 nếu seed DATA_DIR=backend/.data
 ```

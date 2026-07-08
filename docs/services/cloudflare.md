@@ -8,7 +8,7 @@
 ## 2. Xác thực
 - Kiểu: Bearer token (khuyến nghị) hoặc Global API Key.
 - Header: `Authorization: Bearer {{cloudflare.token}}`
-- Credential key: `cloudflare.token.global` (đang lưu) → nên chuyển sang scoped token.
+- Credential key: `cloudflare.token` (scoped token khuyến nghị).
 - Cách lấy: Cloudflare dashboard → My Profile → API Tokens.
 
 ## 3. Endpoint hay dùng

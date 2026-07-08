@@ -62,7 +62,6 @@ Dùng Google Realtime Database, **5 DB tách biệt**. Các bước:
 
 ## 5. Chạy local (không Docker)
 ```bash
-cd app
 npm install
 # build FE (ra backend/public) + chạy BE
 npm run build
@@ -80,7 +79,12 @@ npm run dev:frontend  # cổng 5173, proxy /api → 8080
 
 ## 6. Seed dữ liệu mẫu
 ```bash
-cd app/backend
+npm --workspace backend run seed
+```
+
+Hoặc chạy từ workspace backend:
+```bash
+cd backend
 API_FETCH_MANAGER_STORAGE_MODE=file API_FETCH_MANAGER_DATA_DIR=.data \
 API_FETCH_MANAGER_ADMIN_TOKEN="$(openssl rand -base64 32)" \
 API_FETCH_MANAGER_ENCRYPTION_KEY="$(openssl rand -base64 32)" \

@@ -2,7 +2,7 @@
 
 Hệ thống quản lý tập trung **API key của nhiều dịch vụ** (GitHub, Supabase, Cloudflare, Tailscale, dpdns...) theo `emailOwner`, cho phép **thực thi API call** bằng key đã lưu, mở rộng API kiểu **Fetch Builder** (curl → flow tái sử dụng), lưu **lịch sử + log chi tiết**, có **Inspect Mode** tạo bug/issue từ giao diện, và **kho biến** tái sử dụng với **Placeholder Engine** (transform + JS sandbox).
 
-> Triển khai theo bộ SPEC trong `docs-API-Fetch-Manager/` (Tổng hợp yêu cầu · SPEC tổng thể · SPEC_UI · PLAN · PROMPT+Nhật ký).
+> Triển khai theo bộ SPEC trong `docs/SPEC-PLAN/` (Tổng hợp yêu cầu · SPEC tổng thể · SPEC_UI · PLAN · PROMPT+Nhật ký).
 
 ## Kiến trúc
 ```
@@ -34,7 +34,6 @@ Hệ thống quản lý tập trung **API key của nhiều dịch vụ** (GitHu
 
 ## Chạy nhanh
 ```bash
-cd app
 npm install
 npm run build       # build FE (→ backend/public) + BE
 API_FETCH_MANAGER_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
@@ -54,12 +53,12 @@ docker compose up -d --build
 
 ## Test
 ```bash
-cd app && npm test          # 47 tests, coverage core ~83%
+npm test          # 63 tests / 11 files
 ```
 
 ## Cấu trúc thư mục
 ```
-app/
+.
 ├── backend/        # Fastify + TS
 │   ├── src/
 │   │   ├── config/env.ts        # loader env (prefix API_FETCH_MANAGER_)
@@ -72,7 +71,7 @@ app/
 │   ├── scripts/seed-smoke.ts
 │   └── test/                    # vitest
 ├── frontend/       # React + TS + Vite
-│   └── src/{styles,components,layout,pages,features,api,lib}
+│   └── src/{styles,components,pages,features,api,lib}
 ├── docker/database.rules.json   # RTDB rules + .indexOn
 ├── docs/           # OPERATIONS, DEPLOYMENT, USER_GUIDE, TEST_CASES, SMOKE
 ├── Dockerfile      # multi-stage → 1 image

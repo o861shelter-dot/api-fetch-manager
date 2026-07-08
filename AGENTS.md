@@ -17,7 +17,7 @@
 ## 1. Kiến trúc 1 phút (đọc để không phá nhầm)
 
 ```
-app (monolith Docker)
+repo root (monolith Docker)
 ├── backend  (Node + TS + Fastify)
 │   ├── src/config/env.ts     ← MỌI env prefix API_FETCH_MANAGER_, fail-fast
 │   ├── src/db/rtdb.ts        ← storage adapter: Memory | File | Firebase(REST+OAuth). Interface Db bất biến
@@ -82,7 +82,17 @@ app (monolith Docker)
 
 ---
 
-## 5. Không được làm
+## 5. Session Completion
+
+Khi user yêu cầu **Session Completion**:
+- Chỉ tóm tắt các thay đổi trong session hiện tại **chưa commit**. Không nhắc lại thay đổi đã nằm trong commit trước.
+- Ghi commit summary trực tiếp vào `.git/vstool-commit-template.txt`.
+- **Không commit**. Để user tự review và commit thủ công.
+- Cuối commit message phải có mục **Applying Code Changes**: hướng dẫn ngắn gọn cách developer áp dụng/kiểm tra thay đổi (lệnh chạy, bước verify, lưu ý dữ liệu/env nếu có).
+
+---
+
+## 6. Không được làm
 - Không commit secret/khoá thật. Secret trong tài liệu gốc coi như đã lộ → phải rotate.
 - Không đổi interface `Db`, response shape, hay modal rules mà không cập nhật toàn bộ nơi liên quan.
 - Không thêm dependency nặng nếu chuẩn `node:*` giải quyết được (tiền lệ: dùng REST+JWT thay firebase-admin).
