@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useApp } from './lib/appStore';
 import { UIProvider, useUI } from './components/ui';
 import { Button } from './components/Button';
@@ -25,45 +25,13 @@ const NAV: { id: Page; label: string; icon: React.ReactNode; tip: string }[] = [
  { id: 'issues', label: 'Issues', icon: Icon.bug({}), tip: 'Quản lý bug/issue' },
 ];
 
-/** Parse hotkey dạng 'Ctrl+Shift+J' → matcher. Mặc định Ctrl+Shift+J. */
-function makeHotkeyMatcher(spec: string) {
- const parts = spec.toLowerCase().split('+').map((s) => s.trim());
- const need = {
- ctrl: parts.includes('ctrl'),
- shift: parts.includes('shift'),
- alt: parts.includes('alt'),
- meta: parts.includes('meta') || parts.includes('cmd'),
- key: parts.filter((p) => !['ctrl', 'shift', 'alt', 'meta', 'cmd'].includes(p))[0] ?? 'j',
- };
- return (e: KeyboardEvent) =>
- e.ctrlKey === need.ctrl &&
- e.shiftKey === need.shift &&
- e.altKey === need.alt &&
- e.metaKey === need.meta &&
- e.key.toLowerCase() === need.key;
-}
-
 function Shell() {
- const { theme, toggleTheme, owners, ownerId, setOwnerId, inspect, setInspect } = useApp();
+ const { theme, toggleTheme, owners, ownerId, setOwnerId, inspect, setInspect, inspectHotkey } = useApp();
  const ui = useUI();
  const [page, setPage] = useState<Page>('credentials');
  const [drawer, setDrawer] = useState(false);
  const [tokenOpen, setTokenOpen] = useState(false);
  const [tokenDraft, setTokenDraft] = useState(() => getAdminToken() ?? '');
-
- // Hotkey toàn cục bật Inspect ([UI] addendum v1.2 §5). Mặc định Ctrl+Shift+J, override env.
- useEffect(() => {
- const spec = (import.meta.env.VITE_API_FETCH_MANAGER_INSPECT_HOTKEY as string) || 'Ctrl+Shift+J';
- const match = makeHotkeyMatcher(spec);
- const onKey = (e: KeyboardEvent) => {
- if (match(e)) {
- e.preventDefault();
- setInspect(true);
- }
- };
- window.addEventListener('keydown', onKey, true);
- return () => window.removeEventListener('keydown', onKey, true);
- }, [setInspect]);
 
  const saveToken = () => {
  const trimmed = tokenDraft.trim();
@@ -81,13 +49,13 @@ function Shell() {
 
  return (
  <div className="app">
- <header className="topbar">
- <button className="btn btn--ghost btn--icon menu-toggle" data-tooltip="Mở menu điều hướng" onClick={() => setDrawer((d) => !d)}>{Icon.menu({})}</button>
- <div className="topbar__logo">🍌 API Fetch Manager</div>
+ <div className="topbar">
+ <button className="btn btn--ghost btn--icon menu-toggle" data-tooltip="Mở menu" onClick={() => setDrawer((d) => !d)}>{Icon.menu({})}</button>
+ <span className="topbar__logo">🍌 API Fetch Manager</span>
  <div className="topbar__spacer" />
  <select
  className="select"
- style={{ width: 'auto', maxWidth: 220 }}
+ style={{ maxWidth: 220 }}
  value={ownerId ?? ''}
  onChange={(e) => setOwnerId(e.target.value)}
  data-tooltip="Chọn emailOwner đang thao tác (áp dụng cho credential, execute, history...)"
@@ -95,22 +63,22 @@ function Shell() {
  {owners.length === 0 && <option value="">(chưa có owner)</option>}
  {owners.map((o) => <option key={o.id} value={o.id}>{o.email}</option>)}
  </select>
- <Button iconOnly icon={Icon.key({})} tooltip="Cấu hình Admin API token (lưu trong trình duyệt này)" onClick={() => { setTokenDraft(getAdminToken() ?? ''); setTokenOpen(true); }} />
+ <Button iconOnly icon={Icon.key({})} tooltip="Cấu hình Admin API token (bắt buộc khi backend bật auth)" onClick={() => { setTokenDraft(getAdminToken() ?? ''); setTokenOpen(true); }} />
+ <Button iconOnly icon={Icon.target({})} tooltip={`Bật/tắt chế độ inspect tạo issue (phím tắt ${inspectHotkey})`} variant={inspect ? 'primary' : 'default'} onClick={() => setInspect(!inspect)} />
  <Button iconOnly icon={theme === 'dark' ? Icon.sun({}) : Icon.moon({})} tooltip="Đổi giao diện sáng/tối" onClick={toggleTheme} />
- <Button iconOnly icon={Icon.target({})} tooltip="Bật chế độ Inspect tạo issue (phím tắt Ctrl+Shift+J)" variant={inspect ? 'primary' : 'default'} onClick={() => setInspect(!inspect)} />
- </header>
+ </div>
 
  <div className="body">
- <nav className={`sidebar ${drawer ? 'open' : ''}`}>
+ <div className={'sidebar' + (drawer ? ' open' : '')}>
  <div className="sidebar__group-title">Điều hướng</div>
  {NAV.map((n) => (
- <button key={n.id} className={`nav-item ${page === n.id ? 'active' : ''}`} data-tooltip={n.tip} onClick={() => { setPage(n.id); setDrawer(false); }}>
+ <button key={n.id} className={'nav-item' + (page === n.id ? ' active' : '')} data-tooltip={n.tip} onClick={() => { setPage(n.id); setDrawer(false); }}>
  {n.icon} <span>{n.label}</span>
  </button>
  ))}
- </nav>
+ </div>
 
- <main className="content">
+ <div className="content">
  <div className="content__inner">
  {page === 'credentials' && <CredentialsPage />}
  {page === 'builder' && <FetchBuilderPage />}
@@ -119,7 +87,7 @@ function Shell() {
  {page === 'extractions' && <ExtractionsPage />}
  {page === 'variables' && <VariablesPage />}
  </div>
- </main>
+ </div>
  </div>
 
  {tokenOpen && (
@@ -130,14 +98,16 @@ function Shell() {
  footer={
  <>
  <Button variant="ghost" tooltip="Xoá token khỏi trình duyệt" onClick={() => { setTokenDraft(''); api.clearAdminToken(); setTokenOpen(false); }}>Xoá</Button>
- <Button variant="primary" icon={Icon.save({})} tooltip="Lưu token vào trình duyệt này" onClick={saveToken}>Lưu token</Button>
+ <Button variant="primary" icon={Icon.save({})} tooltip="Lưu token vào localStorage của trình duyệt" onClick={saveToken}>Lưu token</Button>
  </>
  }
  >
- <p className="muted" style={{ textAlign: 'center' }}>Nhập giá trị <code>API_FETCH_MANAGER_ADMIN_TOKEN</code>. Token chỉ lưu trong localStorage của trình duyệt này; có thể cấu hình sẵn bằng <code>VITE_API_FETCH_MANAGER_ADMIN_TOKEN</code> khi build.</p>
+ <p className="page-desc" style={{ textAlign: 'center', marginBottom: 'var(--sp-3)' }}>
+ Nhập giá trị <code>API_FETCH_MANAGER_ADMIN_TOKEN</code>. Token chỉ lưu trong localStorage của trình duyệt này; có thể cấu hình sẵn bằng <code>VITE_API_FETCH_MANAGER_ADMIN_TOKEN</code> khi build.
+ </p>
  <div className="field field--center">
- <label>Token</label>
- <input className="input" value={tokenDraft} onChange={(e) => setTokenDraft(e.target.value)} placeholder="Bearer token..." autoComplete="off" />
+ <label>Admin API token</label>
+ <Input value={tokenDraft} onChange={(e) => setTokenDraft(e.target.value)} placeholder="Bearer token..." autoComplete="off" />
  </div>
  </Modal>
  )}
@@ -149,10 +119,10 @@ function Shell() {
 
 export default function App() {
  return (
- <UIProvider>
  <AppProvider>
+ <UIProvider>
  <Shell />
- </AppProvider>
  </UIProvider>
+ </AppProvider>
  );
 }
