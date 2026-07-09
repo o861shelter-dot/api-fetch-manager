@@ -19,6 +19,7 @@ import { VariablesPage } from './pages/VariablesPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { SelfTestPage } from './pages/SelfTestPage';
 import { api, getAdminToken } from './api/api';
+import './styles/stitch-shell.css';
 
 type Page = 'owners' | 'credentials' | 'builder' | 'services' | 'history' | 'issues' | 'extractions' | 'variables' | 'selftest';
 
@@ -40,8 +41,11 @@ function Shell() {
   const docs = useDocs();
   const [page, setPage] = useState<Page>('owners');
   const [drawer, setDrawer] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(() => getAdminToken() ?? '');
+
+  const activeOwner = owners.find((o) => o.id === ownerId);
 
   const saveToken = () => {
     const trimmed = tokenDraft.trim();
@@ -65,6 +69,13 @@ function Shell() {
         <button className="btn btn--ghost btn--icon menu-toggle" data-tooltip="Mở menu điều hướng" onClick={() => setDrawer((d) => !d)}>{Icon.menu({})}</button>
         <div className="topbar__logo">🍌 API Fetch Manager</div>
         <div className="topbar__spacer" />
+        {activeOwner && (
+          <div className="topbar__active" data-tooltip="Owner đang thao tác (context toàn cục)">
+            <span className="dot" />
+            <span className="lbl">Active:</span>
+            <span className="val">{activeOwner.email}</span>
+          </div>
+        )}
         <OwnerCombobox owners={owners} ownerId={ownerId} onSelect={setOwnerId} />
         <Button iconOnly icon={Icon.info({})} tooltip="Mở tài liệu dịch vụ (side-panel)" onClick={() => docs.open('github')} />
         <Button iconOnly icon={Icon.key({})} tooltip="Cấu hình Admin API token (bắt buộc khi backend bật auth)" onClick={() => { setTokenDraft(getAdminToken() ?? ''); setTokenOpen(true); }} />
@@ -73,22 +84,42 @@ function Shell() {
       </header>
 
       <div className="body">
-        <nav className={drawer ? 'sidebar open' : 'sidebar'}>
-          {groups.map((g) => (
-            <div key={g}>
-              <div className="sidebar__group-title">{g}</div>
-              {NAV.filter((n) => n.group === g).map((n) => (
-                <button
-                  key={n.id}
-                  className={n.id === page ? 'nav-item active' : 'nav-item'}
-                  data-tooltip={n.tip}
-                  onClick={() => { setPage(n.id); setDrawer(false); }}
-                >
-                  {n.icon} {n.label}
-                </button>
-              ))}
-            </div>
-          ))}
+        <nav className={`${drawer ? 'sidebar open' : 'sidebar'}${collapsed ? ' is-collapsed' : ''}`}>
+          <div className="sidebar__brand">
+            <span className="brand-text">
+              <span className="ver">API Manager · v2</span>
+            </span>
+            <button
+              className="btn btn--ghost btn--icon sidebar__collapse"
+              data-tooltip={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+              onClick={() => setCollapsed((c) => !c)}
+            >
+              {collapsed ? Icon.chevronRight({}) : Icon.chevronLeft({})}
+            </button>
+          </div>
+
+          <div className="sidebar__nav">
+            {groups.map((g) => (
+              <div key={g}>
+                <div className="sidebar__group-title">{g}</div>
+                {NAV.filter((n) => n.group === g).map((n) => (
+                  <button
+                    key={n.id}
+                    className={n.id === page ? 'nav-item active' : 'nav-item'}
+                    data-tooltip={n.tip}
+                    onClick={() => { setPage(n.id); setDrawer(false); }}
+                  >
+                    {n.icon} <span className="lbl">{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <div className="sidebar__health">
+            <div className="hd"><span className="dot" /><span>System Healthy</span></div>
+            <div className="sub">API requests optimized for current shard.</div>
+          </div>
         </nav>
 
         <main className="content">
