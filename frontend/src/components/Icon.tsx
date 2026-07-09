@@ -89,4 +89,19 @@ export const Icon = {
   alert: (p: P) => (
     <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
   ),
+  toggle: (p: P) => (
+    <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><rect x="1" y="7" width="22" height="10" rx="5" /><circle cx="16" cy="12" r="3" /></svg>
+  ),
+  external: (p: P) => (
+    <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
+  ),
+  refresh: (p: P) => (
+    <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><path d="M21 12a9 9 0 1 1-3-6.7M21 3v5h-5" /></svg>
+  ),
+  filter: (p: P) => (
+    <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3Z" /></svg>
+  ),
+  users: (p: P) => (
+    <svg {...base(p.size)} className={`ico ${p.className ?? ''}`}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+  ),
 };

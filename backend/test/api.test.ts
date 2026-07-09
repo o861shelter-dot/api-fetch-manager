@@ -66,6 +66,36 @@ describe('API integration (inject)', () => {
     expect(list.json().data.filter((c: any) => c.key === 'dpdns.apikey')).toHaveLength(3);
   });
 
+  it('owner CRUD (B1): list kèm services · update · delete kèm credential', async () => {
+    const own = await app.inject({ method: 'POST', url: '/api/owners', payload: { email: 'crud@example.com', isSaveRtdbEmail: true } });
+    const id = own.json().data.id;
+    await app.inject({ method: 'POST', url: `/api/owners/${id}/credentials`, payload: { key: 'github.token', value: 'x', service: 'github.com' } });
+
+    // list kèm badge services
+    const listed = await app.inject({ method: 'GET', url: '/api/owners' });
+    const found = listed.json().data.find((o: any) => o.id === id);
+    expect(found.services).toContain('github.com');
+
+    // update isSaveRtdbEmail + email
+    const upd = await app.inject({ method: 'PUT', url: `/api/owners/${id}`, payload: { isSaveRtdbEmail: false, email: 'crud2@example.com' } });
+    expect(upd.json().data.updated).toBe(true);
+    const afterUpd = (await app.inject({ method: 'GET', url: '/api/owners' })).json().data.find((o: any) => o.id === id);
+    expect(afterUpd.isSaveRtdbEmail).toBe(false);
+    expect(afterUpd.email).toBe('crud2@example.com');
+
+    // update rỗng → 400
+    const bad = await app.inject({ method: 'PUT', url: `/api/owners/${id}`, payload: {} });
+    expect(bad.statusCode).toBe(400);
+
+    // delete owner → cả credential biến mất
+    const del = await app.inject({ method: 'DELETE', url: `/api/owners/${id}` });
+    expect(del.json().data.deleted).toBe(true);
+    const gone = (await app.inject({ method: 'GET', url: '/api/owners' })).json().data.find((o: any) => o.id === id);
+    expect(gone).toBeUndefined();
+    const creds = await app.inject({ method: 'GET', url: `/api/owners/${id}/credentials` });
+    expect(creds.json().data).toHaveLength(0);
+  });
+
   it('parse-curl → template → có step', async () => {
     const parsed = await app.inject({
       method: 'POST',
@@ -227,6 +257,75 @@ describe('API integration (inject)', () => {
   it('POST /api/resources thiếu field → 400', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/resources', payload: { service: 'github.com' } });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('POST /api/resources/refresh (B4) — snapshot trực tiếp thay toàn bộ item owner+service', async () => {
+    const own = await app.inject({ method: 'POST', url: '/api/owners', payload: { email: 'refresh@example.com' } });
+    const ownerId = own.json().data.id;
+    // seed 1 item cũ
+    await app.inject({ method: 'POST', url: '/api/resources', payload: { ownerId, service: 'cron-job.org', resourceType: 'job', label: 'old', data: {} } });
+
+    const refreshed = await app.inject({
+      method: 'POST',
+      url: '/api/resources/refresh',
+      payload: {
+        ownerId, service: 'cron-job.org',
+        items: [
+          { resourceType: 'job', label: 'job-1', data: { jobId: 101 } },
+          { resourceType: 'job', label: 'job-2', data: { jobId: 102 } },
+        ],
+      },
+    });
+    expect(refreshed.statusCode).toBe(200);
+    expect(refreshed.json().data.saved).toBe(2);
+
+    const list = (await app.inject({ method: 'GET', url: `/api/resources?ownerId=${ownerId}&service=cron-job.org` })).json().data as any[];
+    // item cũ 'old' đã bị thay
+    expect(list).toHaveLength(2);
+    expect(list.some((r) => r.label === 'old')).toBe(false);
+    expect(list.some((r) => r.data.jobId === 101)).toBe(true);
+  });
+
+  it('POST /api/resources/refresh thiếu ownerId/service → 400; thiếu templateId+items → 400', async () => {
+    const bad1 = await app.inject({ method: 'POST', url: '/api/resources/refresh', payload: { service: 'github.com' } });
+    expect(bad1.statusCode).toBe(400);
+    const bad2 = await app.inject({ method: 'POST', url: '/api/resources/refresh', payload: { ownerId: 'x', service: 'github.com' } });
+    expect(bad2.statusCode).toBe(400);
+  });
+
+  it('Extracted Data CRUD (B5): create · update · delete', async () => {
+    const own = await app.inject({ method: 'POST', url: '/api/owners', payload: { email: 'extract@example.com' } });
+    const ownerId = own.json().data.id;
+
+    const created = await app.inject({
+      method: 'POST', url: '/api/extractions',
+      payload: { ownerId, service: 'github.com', field: 'repoUrl', value: 'https://x', jsonPath: '$.html_url' },
+    });
+    expect(created.statusCode).toBe(200);
+    const id = created.json().data.id;
+    expect(created.json().data.templateName).toBe('(manual)');
+
+    // create thiếu field → 400
+    const bad = await app.inject({ method: 'POST', url: '/api/extractions', payload: { ownerId } });
+    expect(bad.statusCode).toBe(400);
+
+    // update
+    const upd = await app.inject({ method: 'PUT', url: `/api/extractions/${id}`, payload: { value: 'https://y', field: 'repoUrl2' } });
+    expect(upd.json().data.updated).toBe(true);
+    const listed = (await app.inject({ method: 'GET', url: `/api/extractions?ownerId=${ownerId}` })).json().data as any[];
+    const rec = listed.find((e) => e.id === id);
+    expect(rec.field).toBe('repoUrl2');
+    expect(rec.value).toBe('https://y');
+
+    // update id không tồn tại → 404
+    const nf = await app.inject({ method: 'PUT', url: '/api/extractions/nope', payload: { field: 'x' } });
+    expect(nf.statusCode).toBe(404);
+
+    // delete
+    const del = await app.inject({ method: 'DELETE', url: `/api/extractions/${id}` });
+    expect(del.json().data.deleted).toBe(true);
+    const after = (await app.inject({ method: 'GET', url: `/api/extractions?ownerId=${ownerId}` })).json().data as any[];
+    expect(after.some((e) => e.id === id)).toBe(false);
   });
 
   /* ---------- Fetch → cURL (addendum v1.5) ---------- */

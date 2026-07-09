@@ -47,7 +47,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
  const [theme, setTheme] = useState<Theme>(() => {
  const saved = localStorage.getItem(THEME_KEY) as Theme | null;
  if (saved) return saved;
- return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+ // Thiết kế Stitch là Emerald-on-Dark → mặc định dark.
+ return 'dark';
  });
  const [owners, setOwners] = useState<Owner[]>([]);
  const [ownerId, setOwnerId] = useState<string | null>(null);

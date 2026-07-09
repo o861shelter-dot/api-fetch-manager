@@ -48,12 +48,34 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
   });
 
   /* ---------- Owners & Credentials ([SYS] 4.1) ---------- */
-  app.get('/api/owners', async () => ok(await store.listOwners(ctx)));
+  app.get('/api/owners', async () => {
+    const owners = await store.listOwners(ctx);
+    // Kèm danh sách service (host) mỗi owner cho badge Services ở trang Owners (B1).
+    const withServices = await Promise.all(
+      owners.map(async (o) => ({ ...o, services: await store.listOwnerServices(ctx, o.id) })),
+    );
+    return ok(withServices);
+  });
 
   app.post('/api/owners', async (req, reply) => {
     const b = req.body as { email?: string; isSaveRtdbEmail?: boolean };
     if (!b?.email) return reply.code(400).send(err('email là bắt buộc'));
     return ok(await store.createOwner(ctx, b.email, b.isSaveRtdbEmail ?? true));
+  });
+
+  app.put('/api/owners/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const b = req.body as { email?: string; isSaveRtdbEmail?: boolean };
+    if (b?.email === undefined && b?.isSaveRtdbEmail === undefined)
+      return reply.code(400).send(err('Cần ít nhất email hoặc isSaveRtdbEmail để cập nhật'));
+    await store.updateOwner(ctx, id, b);
+    return ok({ updated: true });
+  });
+
+  app.delete('/api/owners/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await store.removeOwner(ctx, id);
+    return ok({ deleted: true });
   });
 
   app.get('/api/owners/:id/credentials', async (req) => {
@@ -314,10 +336,39 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
     return ok({ deleted: true });
   });
 
-  /* ---------- Extracted Data ([SYS] 10.5) ---------- */
+  /* ---------- Extracted Data ([SYS] 10.5 + B5 CRUD) ---------- */
   app.get('/api/extractions', async (req) => {
     const q = req.query as { ownerId?: string; service?: string };
     return ok(await store.listExtractions(ctx, q));
+  });
+  app.post('/api/extractions', async (req, reply) => {
+    const b = req.body as {
+      ownerId?: string; service?: string; templateId?: string; templateName?: string;
+      field?: string; value?: unknown; jsonPath?: string;
+    };
+    if (!b?.ownerId || !b?.field) return reply.code(400).send(err('ownerId & field là bắt buộc'));
+    return ok(await store.createExtraction(ctx, {
+      ownerId: b.ownerId,
+      service: b.service ?? '',
+      templateId: b.templateId ?? '',
+      templateName: b.templateName ?? '(manual)',
+      field: b.field,
+      value: b.value,
+      jsonPath: b.jsonPath ?? '',
+      createdAt: now(),
+    }));
+  });
+  app.put('/api/extractions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const existing = await store.getExtraction(ctx, id);
+    if (!existing) return reply.code(404).send(err('Không tìm thấy extraction'));
+    await store.updateExtraction(ctx, id, req.body as any);
+    return ok({ updated: true });
+  });
+  app.delete('/api/extractions/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await store.removeExtraction(ctx, id);
+    return ok({ deleted: true });
   });
 
   /* ---------- Placeholder Engine helpers ---------- */
@@ -384,6 +435,59 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
     const { id } = req.params as { id: string };
     await store.removeResource(ctx, id);
     return ok({ deleted: true });
+  });
+
+  /**
+   * Refresh resource snapshot theo service (B4).
+   * Cách 1 — chạy listTemplateId: body { ownerId, service, templateId, params?, itemsField?, labelField?, typeField? }
+   *   → executeFlow → lấy mảng item từ ctx (itemsField, mặc định 'items') → lưu snapshot.
+   * Cách 2 — snapshot trực tiếp: body { ownerId, service, items: [{ resourceType,label,data }] }.
+   */
+  app.post('/api/resources/refresh', async (req, reply) => {
+    const b = req.body as {
+      ownerId?: string; service?: string; templateId?: string;
+      params?: Record<string, unknown>;
+      items?: { resourceType?: string; label?: string; data?: Record<string, unknown> }[];
+      itemsField?: string; labelField?: string; typeField?: string;
+    };
+    if (!b?.ownerId || !b?.service) return reply.code(400).send(err('ownerId & service là bắt buộc'));
+
+    // Cách 2: snapshot trực tiếp.
+    if (Array.isArray(b.items)) {
+      const saved = await store.replaceResources(ctx, b.ownerId, b.service, b.items.map((it) => ({
+        resourceType: it.resourceType ?? 'item',
+        label: it.label ?? '',
+        data: it.data ?? {},
+      })));
+      return ok({ saved, source: 'items' });
+    }
+
+    // Cách 1: chạy listTemplateId.
+    if (!b.templateId) return reply.code(400).send(err('Cần templateId (listTemplateId) hoặc items để refresh'));
+    const tpl = await store.getTemplate(ctx, b.templateId);
+    if (!tpl) return reply.code(404).send(err('Không tìm thấy template'));
+    const run = await executeFlow(ctx, { ownerId: b.ownerId, template: tpl, runtimeInputs: b.params });
+    if (!run.ok) return reply.code(422).send(err(run.error ?? 'listTemplate chạy thất bại'));
+
+    // Gom mảng item: ưu tiên field itemsField ở bất kỳ step nào; fallback tìm mảng đầu tiên trong ctx.
+    const itemsField = b.itemsField ?? 'items';
+    let arr: unknown[] | null = null;
+    for (const stepId of Object.keys(run.ctx)) {
+      const v = (run.ctx[stepId] as any);
+      if (v && typeof v === 'object' && Array.isArray(v[itemsField])) { arr = v[itemsField]; break; }
+      if (Array.isArray(v)) { arr = v; break; }
+    }
+    if (!arr) return reply.code(422).send(err(`Không tìm thấy mảng "${itemsField}" trong kết quả template`));
+
+    const labelField = b.labelField ?? 'label';
+    const typeField = b.typeField;
+    const items = arr.map((el: any, i) => ({
+      resourceType: (typeField && el?.[typeField]) ? String(el[typeField]) : (b.items ? 'item' : tpl.business || 'item'),
+      label: el && typeof el === 'object' && el[labelField] != null ? String(el[labelField]) : `${tpl.business || 'item'}-${i + 1}`,
+      data: (el && typeof el === 'object') ? el : { value: el },
+    }));
+    const saved = await store.replaceResources(ctx, b.ownerId, b.service, items);
+    return ok({ saved, source: 'template', templateId: b.templateId });
   });
 
   /* ---------- Self-Test Mode (addendum v1.5) ---------- */

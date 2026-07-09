@@ -43,6 +43,30 @@ export async function getOwner(ctx: AppContext, id: string): Promise<Owner | nul
  return o ? { ...o, id } : null;
 }
 
+/** Cập nhật owner (email / isSaveRtdbEmail). Giữ updatedAt mới. */
+export async function updateOwner(
+ ctx: AppContext,
+ id: string,
+ patch: { email?: string; isSaveRtdbEmail?: boolean },
+): Promise<void> {
+ const upd: Record<string, unknown> = { updatedAt: now() };
+ if (patch.email !== undefined) upd.email = patch.email;
+ if (patch.isSaveRtdbEmail !== undefined) upd.isSaveRtdbEmail = patch.isSaveRtdbEmail;
+ await ctx.db.keys.update(`owners/${id}`, upd);
+}
+
+/** Xoá owner + toàn bộ credential của owner đó. */
+export async function removeOwner(ctx: AppContext, id: string): Promise<void> {
+ await ctx.db.keys.remove(`credentials/${id}`);
+ await ctx.db.keys.remove(`owners/${id}`);
+}
+
+/** Danh sách service (host) mà owner đang có credential — cho badge Services ở trang Owners. */
+export async function listOwnerServices(ctx: AppContext, ownerId: string): Promise<string[]> {
+ const creds = await listCredentials(ctx, ownerId);
+ return [...new Set(creds.map((c) => c.service).filter(Boolean))];
+}
+
 export async function listCredentials(ctx: AppContext, ownerId: string): Promise<Credential[]> {
  const map = await ctx.db.keys.query<Credential>(`credentials/${ownerId}`);
  return Object.entries(map).map(([id, c]) => ({ ...c, id }));
@@ -123,6 +147,48 @@ export async function resolveCredentialsByKey(
  if (found) { const v = ctx.tryDecrypt({ valueEnc: found.valueEnc, iv: found.iv }); if (v !== null) out[k] = v; }
  }
  return out;
+}
+
+/**
+ * Resolve credential theo credentialRefs (B3 — key trùng resolve đúng).
+ * Quy tắc mỗi ref (map placeholder → value):
+ *   - Có credId → dùng đúng credential đó (báo lỗi nếu credId không tồn tại/giải mã fail).
+ *   - Không credId + key có duy nhất 1 giá trị → dùng giá trị đó.
+ *   - Không credId + key có nhiều giá trị → LỖI (yêu cầu chọn credId).
+ *   - Không credId + key không có giá trị → bỏ qua (undefined).
+ * Trả { credentials, errors } — errors rỗng nghĩa là resolve OK.
+ */
+export async function resolveCredentialsByRefs(
+ ctx: AppContext,
+ ownerId: string,
+ refs: { placeholder: string; key: string; credId?: string }[],
+): Promise<{ credentials: Record<string, string>; errors: string[] }> {
+ const all = await listCredentials(ctx, ownerId);
+ const out: Record<string, string> = {};
+ const errors: string[] = [];
+ for (const ref of refs) {
+ const placeholder = ref.placeholder || ref.key;
+ if (ref.credId) {
+ const found = all.find((c) => c.id === ref.credId);
+ if (!found) {
+ errors.push(`Không tìm thấy credId "${ref.credId}" cho placeholder "${placeholder}".`);
+ continue;
+ }
+ const v = ctx.tryDecrypt({ valueEnc: found.valueEnc, iv: found.iv });
+ if (v === null) { errors.push(`Không giải mã được credId "${ref.credId}" (sai ENCRYPTION_KEY?).`); continue; }
+ out[placeholder] = v;
+ continue;
+ }
+ const matches = all.filter((c) => c.key === ref.key);
+ if (matches.length === 0) continue; // để undefined → placeholder giữ nguyên
+ if (matches.length > 1) {
+ errors.push(`Key "${ref.key}" có ${matches.length} giá trị — hãy chọn credId cụ thể cho placeholder "${placeholder}".`);
+ continue;
+ }
+ const v = ctx.tryDecrypt({ valueEnc: matches[0].valueEnc, iv: matches[0].iv });
+ if (v !== null) out[placeholder] = v;
+ }
+ return { credentials: out, errors };
 }
 
 /* ---------------- Catalogs (danh mục dùng chung — rtdb-keys/catalogs) ---------------- */
@@ -351,6 +417,28 @@ export async function listExtractions(
  return list.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/** Lấy 1 extraction record theo id. */
+export async function getExtraction(ctx: AppContext, id: string): Promise<ExtractionRecord | null> {
+ const e = await ctx.db.variables.get<ExtractionRecord>(`extractions/${id}`);
+ return e ? { ...e, id } : null;
+}
+/** Tạo extraction record thủ công (B5 CRUD). */
+export async function createExtraction(
+ ctx: AppContext,
+ data: Omit<ExtractionRecord, 'id'>,
+): Promise<ExtractionRecord> {
+ const id = await ctx.db.variables.push('extractions', data as any);
+ return (await getExtraction(ctx, id))!;
+}
+/** Cập nhật extraction record (field/value/jsonPath...). */
+export async function updateExtraction(ctx: AppContext, id: string, patch: Partial<ExtractionRecord>): Promise<void> {
+ await ctx.db.variables.update(`extractions/${id}`, patch as any);
+}
+/** Xoá extraction record. */
+export async function removeExtraction(ctx: AppContext, id: string): Promise<void> {
+ await ctx.db.variables.remove(`extractions/${id}`);
+}
+
 /* ---------------- Services catalog (RTDB #6 resources/services — addendum v1.4 §5) ---------------- */
 
 /** Danh mục service mặc định, khớp docs/services/<host>.md. */
@@ -433,5 +521,26 @@ export async function updateResource(ctx: AppContext, id: string, patch: Partial
 }
 export async function removeResource(ctx: AppContext, id: string): Promise<void> {
  await ctx.db.resources.remove(`items/${id}`);
+}
+
+/**
+ * Thay toàn bộ snapshot resource của (owner, service) bằng danh sách mới (B4 — Refresh).
+ * Xoá các item cũ của đúng owner+service rồi ghi lại items mới. Trả số item đã lưu.
+ */
+export async function replaceResources(
+ ctx: AppContext,
+ ownerId: string,
+ service: string,
+ items: { resourceType: string; label: string; data?: Record<string, unknown> }[],
+): Promise<number> {
+ const existing = await listResources(ctx, { ownerId, service });
+ for (const r of existing) await removeResource(ctx, r.id);
+ let n = 0;
+ for (const it of items) {
+ if (!it || !it.label) continue;
+ await saveResource(ctx, { ownerId, service, resourceType: it.resourceType || 'item', label: it.label, data: it.data ?? {} });
+ n++;
+ }
+ return n;
 }
 

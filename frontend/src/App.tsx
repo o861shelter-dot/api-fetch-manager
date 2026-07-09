@@ -10,6 +10,7 @@ import { StatusBar } from './components/StatusBar';
 import { InspectMode } from './features/inspect/InspectMode';
 import { DocsProvider, useDocs } from './features/docs/DocsPanel';
 import { CredentialsPage } from './pages/CredentialsPage';
+import { OwnersPage } from './pages/OwnersPage';
 import { FetchBuilderPage } from './pages/FetchBuilderPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { IssuesPage } from './pages/IssuesPage';
@@ -19,9 +20,10 @@ import { ServicesPage } from './pages/ServicesPage';
 import { SelfTestPage } from './pages/SelfTestPage';
 import { api, getAdminToken } from './api/api';
 
-type Page = 'credentials' | 'builder' | 'services' | 'history' | 'issues' | 'extractions' | 'variables' | 'selftest';
+type Page = 'owners' | 'credentials' | 'builder' | 'services' | 'history' | 'issues' | 'extractions' | 'variables' | 'selftest';
 
 const NAV: { id: Page; label: string; icon: React.ReactNode; tip: string; group: string }[] = [
+  { id: 'owners', label: 'Owners', icon: Icon.users({}), tip: 'Quản lý System Owners & môi trường dịch vụ', group: 'Vận hành' },
   { id: 'credentials', label: 'Credentials', icon: Icon.key({}), tip: 'Quản lý key theo owner', group: 'Vận hành' },
   { id: 'builder', label: 'Fetch Builder', icon: Icon.zap({}), tip: 'Tạo & chạy flow API', group: 'Vận hành' },
   { id: 'services', label: 'Services & Resources', icon: Icon.db({}), tip: 'Tài nguyên theo dịch vụ & owner', group: 'Vận hành' },
@@ -36,7 +38,7 @@ function Shell() {
   const { theme, toggleTheme, owners, ownerId, setOwnerId, inspect, setInspect } = useApp();
   const ui = useUI();
   const docs = useDocs();
-  const [page, setPage] = useState<Page>('credentials');
+  const [page, setPage] = useState<Page>('owners');
   const [drawer, setDrawer] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
   const [tokenDraft, setTokenDraft] = useState(() => getAdminToken() ?? '');
@@ -91,9 +93,16 @@ function Shell() {
 
         <main className="content">
           <div className="content__inner">
+            {page === 'owners' && (
+              <OwnersPage
+                onGoCredentials={() => setPage('credentials')}
+                onGoBuilder={() => setPage('builder')}
+                onGoService={() => setPage('services')}
+              />
+            )}
             {page === 'credentials' && <CredentialsPage />}
             {page === 'builder' && <FetchBuilderPage />}
-            {page === 'services' && <ServicesPage />}
+            {page === 'services' && <ServicesPage onCreateFetchFromItem={() => setPage('builder')} />}
             {page === 'history' && <HistoryPage />}
             {page === 'issues' && <IssuesPage />}
             {page === 'extractions' && <ExtractionsPage />}

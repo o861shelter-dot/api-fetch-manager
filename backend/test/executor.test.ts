@@ -217,4 +217,45 @@ describe('executeFlow — sequential 2-step', () => {
     expect(logStr).toContain('visible_debug_value');
     expect(logStr).not.toContain('seed_token');
   });
+
+  it('B3 — key trùng: chưa chọn credId → resolve lỗi; chọn credId A/B → resolve đúng', async () => {
+    // 2 credential cùng key github.token, giá trị khác nhau.
+    const credA = await store.addCredential(ctx, ownerId, { key: 'github.token', value: 'VALUE_A', service: 'github.com', label: 'A' });
+    const credB = await store.addCredential(ctx, ownerId, { key: 'github.token', value: 'VALUE_B', service: 'github.com', label: 'B' });
+
+    // (a) không credId + key trùng → errors
+    const ambiguous = await store.resolveCredentialsByRefs(ctx, ownerId, [{ placeholder: 'github.token', key: 'github.token' }]);
+    expect(ambiguous.errors.length).toBe(1);
+    expect(ambiguous.credentials['github.token']).toBeUndefined();
+
+    // (b) chọn credId A → VALUE_A
+    const pickA = await store.resolveCredentialsByRefs(ctx, ownerId, [{ placeholder: 'github.token', key: 'github.token', credId: credA.id }]);
+    expect(pickA.errors).toHaveLength(0);
+    expect(pickA.credentials['github.token']).toBe('VALUE_A');
+
+    // (c) chọn credId B → VALUE_B
+    const pickB = await store.resolveCredentialsByRefs(ctx, ownerId, [{ placeholder: 'github.token', key: 'github.token', credId: credB.id }]);
+    expect(pickB.credentials['github.token']).toBe('VALUE_B');
+
+    // (d) key duy nhất 1 giá trị (org.token seed) → fallback không cần credId
+    const single = await store.resolveCredentialsByRefs(ctx, ownerId, [{ placeholder: 'org.token', key: 'org.token' }]);
+    expect(single.errors).toHaveLength(0);
+    expect(single.credentials['org.token']).toBe('seed_token');
+  });
+
+  it('B3 — executeFlow dừng khi key trùng chưa chọn credId', async () => {
+    await store.addCredential(ctx, ownerId, { key: 'dup.token', value: 'X1', service: 'x.com' });
+    await store.addCredential(ctx, ownerId, { key: 'dup.token', value: 'X2', service: 'x.com' });
+    const tpl: FetchTemplate = {
+      id: 'flow-dup',
+      name: 'dup', service: 'x.com', business: 'get', stopOnError: true,
+      credentialRefs: [{ placeholder: 'dup.token', key: 'dup.token' }],
+      steps: [{ id: 's1', method: 'GET', urlTemplate: 'https://x.com/api', headers: { Authorization: 'Bearer {{dup.token}}' } }],
+      createdAt: 0, updatedAt: 0,
+    };
+    const res = await executeFlow(ctx, { ownerId, template: tpl }, mockFetch({ 'https://x.com/api': { status: 200, body: {} } }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('credId');
+    expect(res.steps).toHaveLength(0);
+  });
 });

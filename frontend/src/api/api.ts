@@ -56,6 +56,9 @@ export interface Owner {
  email: string;
  isSaveRtdbEmail: boolean;
  createdAt: number;
+ updatedAt?: number;
+ /** Danh sách service (host) owner đang có credential — cho badge Services (B1). */
+ services?: string[];
 }
 export interface CredentialMasked {
  id: string;
@@ -87,7 +90,7 @@ export interface FetchTemplate {
  business: string;
  stopOnError?: boolean;
  inputs?: FlowInput[];
- credentialRefs?: { placeholder: string; key: string }[];
+ credentialRefs?: { placeholder: string; key: string; credId?: string }[];
  steps: FlowStep[];
  createdAt: number;
  updatedAt: number;

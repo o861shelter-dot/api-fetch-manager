@@ -181,6 +181,14 @@ function BuilderModal({ initial, ownerId, seedCurl, onClose, onSaved, ui }: { in
 
  const patch = (p: Partial<FetchTemplate>) => setTpl((t) => ({ ...t, ...p }));
  const patchStep = (i: number, p: Partial<FlowStep>) => setTpl((t) => { const s = [...t.steps]; s[i] = { ...s[i], ...p }; return { ...t, steps: s }; });
+ // B3: ghi/ cập nhật credentialRef theo placeholder (chọn credId khi key trùng).
+ const pickRef = (ref: { placeholder: string; key: string; credId: string }) => setTpl((t) => {
+ const refs = [...(t.credentialRefs ?? [])];
+ const idx = refs.findIndex((r) => r.placeholder === ref.placeholder);
+ if (idx >= 0) refs[idx] = { ...refs[idx], key: ref.key, credId: ref.credId };
+ else refs.push(ref);
+ return { ...t, credentialRefs: refs };
+ });
  const addStep = () => { setTpl((t) => ({ ...t, steps: [...t.steps, newStep()] })); setActiveStep(tpl.steps.length); };
  const delStep = (i: number) => setTpl((t) => ({ ...t, steps: t.steps.filter((_, x) => x !== i) }));
  const step = tpl.steps[activeStep];
@@ -243,7 +251,7 @@ function BuilderModal({ initial, ownerId, seedCurl, onClose, onSaved, ui }: { in
  {/* Pane phải: step editor */}
  <div className="builder-main">
  {step ? (
- <StepEditor template={tpl} stepIndex={activeStep} step={step} ownerId={ownerId} ui={ui} onChange={(p) => patchStep(activeStep, p)} onOpenJs={() => setJsOpen(true)} />
+ <StepEditor template={tpl} stepIndex={activeStep} step={step} ownerId={ownerId} ui={ui} onChange={(p) => patchStep(activeStep, p)} onOpenJs={() => setJsOpen(true)} onPickRef={pickRef} />
  ) : <div className="empty">Chọn hoặc thêm step.</div>}
  </div>
  </div>
@@ -331,6 +339,7 @@ function StepEditor({
  ui,
  onChange,
  onOpenJs,
+ onPickRef,
 }: {
  template: FetchTemplate;
  stepIndex: number;
@@ -339,6 +348,7 @@ function StepEditor({
  ui: UI;
  onChange: (p: Partial<FlowStep>) => void;
  onOpenJs: () => void;
+ onPickRef?: (ref: { placeholder: string; key: string; credId: string }) => void;
 }) {
  const headers = step.headers ?? {};
  const hEntries = Object.entries(headers);
@@ -420,7 +430,7 @@ function StepEditor({
  <Field label="URL template (hỗ trợ {{...}})">
  <div className="row">
  <Input className="input mono" value={step.urlTemplate} onChange={(e) => onChange({ urlTemplate: e.target.value })} placeholder="https://api.github.com/user/repos" />
- <KeyPicker ownerId={ownerId} onInsert={appendUrl} />
+ <KeyPicker ownerId={ownerId} onInsert={appendUrl} onPickRef={onPickRef} />
  </div>
  </Field>
  </div>
@@ -436,7 +446,7 @@ function StepEditor({
  <div className="row" key={i}>
  <Input value={k} onChange={(e) => setHeader(i, e.target.value, v)} placeholder="Header" />
  <Input value={v} onChange={(e) => setHeader(i, k, e.target.value)} placeholder="Giá trị (hỗ trợ {{key}})" />
- <KeyPicker ownerId={ownerId} onInsert={(s) => appendHeaderVal(i, s)} />
+ <KeyPicker ownerId={ownerId} onInsert={(s) => appendHeaderVal(i, s)} onPickRef={onPickRef} />
  </div>
  ))}
  <Button icon={Icon.plus({})} variant="ghost" tooltip="Thêm dòng header" onClick={addHeader}>Thêm header</Button>
@@ -450,7 +460,7 @@ function StepEditor({
  </Field>
  <div style={{ flex: 1, display: 'flex', gap: 'var(--sp-2)', alignItems: 'flex-end' }}>
  {bodyFormat === 'json' && <Button icon={Icon.zap({})} variant="ghost" tooltip="Beautify: format JSON cho dễ đọc (bỏ qua nếu có placeholder không parse được)" onClick={beautify}>Beautify</Button>}
- <KeyPicker ownerId={ownerId} onInsert={appendBody} />
+ <KeyPicker ownerId={ownerId} onInsert={appendBody} onPickRef={onPickRef} />
  <Button icon={Icon.play({})} variant="ghost" tooltip="Test JS sandbox (transform placeholder)" onClick={onOpenJs}>Test JS</Button>
  </div>
  </div>

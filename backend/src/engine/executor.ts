@@ -133,9 +133,13 @@ export async function executeFlow(
     }
   }
 
-  // credential map: gom key từ credentialRefs.
-  const credKeys = (template.credentialRefs ?? []).map((r) => r.key);
-  const credentials = await store.resolveCredentialsByKey(ctx, ownerId, credKeys);
+  // credential map: resolve theo credentialRefs, ưu tiên credId; báo lỗi khi key trùng
+  // mà chưa chọn credId (B3 — key trùng resolve đúng).
+  const refs = template.credentialRefs ?? [];
+  const { credentials, errors: credErrors } = await store.resolveCredentialsByRefs(ctx, ownerId, refs);
+  if (credErrors.length > 0) {
+    return { ok: false, ctx: {}, steps: [], error: `Không resolve được credential: ${credErrors.join(' ')}` };
+  }
   const scrub = (s: string) => debugText(s, credentials, ctx.config.redactExecutionValues);
 
   const flowCtx: Record<string, unknown> = {};

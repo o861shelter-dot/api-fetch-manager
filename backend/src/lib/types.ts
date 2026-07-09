@@ -58,6 +58,8 @@ export interface FlowStep {
 export interface CredentialRef {
  placeholder: string;
  key: string;
+ /** credId cụ thể để chọn đúng giá trị khi 1 key có nhiều credential (B3). */
+ credId?: string;
 }
 
 export interface FetchTemplate {
